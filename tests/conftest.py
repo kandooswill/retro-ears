@@ -1,9 +1,13 @@
 import io
 import subprocess
+import time
 
 import imageio_ffmpeg
 import pytest
 from PIL import Image
+
+import download
+from models import RetroError
 
 CODEC_ARGS = {
     "m4a": ["-c:a", "aac", "-b:a", "128k"],
@@ -39,3 +43,36 @@ def jpeg_bytes():
         return buffer.getvalue()
 
     return make
+
+
+@pytest.fixture
+def fake_fetch():
+    """Stand-in for download.fetch that writes a tiny file instead of downloading."""
+
+    def make(fail_titles=(), calls=None):
+        def fetch(track, fmt, workdir, cookie_source="off"):
+            if calls is not None:
+                calls.append((track, fmt, cookie_source))
+            if track.title in fail_titles:
+                raise RetroError("Unavailable on YouTube")
+            path = download.unique_path(workdir, download.safe_filename(f"{track.artist} - {track.title}"), fmt)
+            path.write_bytes(b"audio")
+            return download.Result(path=path, quality="AAC 130")
+
+        return fetch
+
+    return make
+
+
+@pytest.fixture
+def wait_job():
+    def wait(manager, job_id, timeout=10):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            status = manager.get(job_id).public()
+            if status["status"] != "running":
+                return status
+            time.sleep(0.02)
+        raise AssertionError("job did not finish in time")
+
+    return wait
