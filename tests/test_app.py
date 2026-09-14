@@ -142,3 +142,11 @@ def test_settings_rejects_unknown_source(client):
     response = client.put("/api/settings", json={"cookie_source": "netscape"})
     assert response.status_code == 400
     assert response.json() == {"error": "Unknown login source"}
+
+
+def test_index_page(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "<title>retro-ears</title>" in response.text
+    assert 'id="searchForm"' in response.text

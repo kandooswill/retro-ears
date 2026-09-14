@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>retro-ears</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0c0c0d;
+    --surface: #151517;
+    --surface-2: #1d1d20;
+    --line: #27272b;
+    --line-strong: #3a3a40;
+    --text: #ededee;
+    --muted: #8d8d94;
+    --accent: #e6ff5c;
+    --accent-ink: #0c0c0d;
+    --danger: #ff7a7a;
+    --warn: #f4c261;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 48px 20px 160px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+  .brand { font-size: 20px; font-weight: 650; letter-spacing: -0.02em; }
+  .brand b { color: var(--accent); font-weight: inherit; }
+  .btn { height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); cursor: pointer; white-space: nowrap; transition: border-color .15s, background-color .15s; }
+  .btn:hover { border-color: var(--line-strong); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .btn.icon { width: 36px; padding: 0; font-size: 17px; }
+  .search { display: flex; gap: 8px; }
+  .search input { flex: 1; min-width: 0; height: 50px; padding: 0 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .search input::placeholder { color: var(--muted); }
+  .search input:focus-visible { outline: none; border-color: var(--accent); }
+  .search .btn { height: 50px; padding: 0 22px; border-radius: 12px; }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 16px 0 12px; }
+  .tabs { display: inline-flex; padding: 3px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; }
+  .tab { padding: 6px 16px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; }
+  .tab[aria-selected="true"] { background: var(--surface-2); color: var(--text); }
+  .format { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+  select { height: 34px; padding: 0 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  .list { margin: 0; padding: 0; list-style: none; }
+  .row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 8px; border-radius: 10px; }
+  .row:hover { background: var(--surface); }
+  .art { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: var(--surface-2); }
+  .title, .sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .actions { display: flex; gap: 6px; }
+  .state { margin: 0; padding: 56px 8px; color: var(--muted); text-align: center; }
+  .state.error { color: var(--danger); }
+  .back { margin: 4px 0 12px; padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; }
+  .back:hover { color: var(--text); }
+  .pl-head { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; }
+  .cover { flex: none; width: 104px; height: 104px; border-radius: 10px; object-fit: cover; background: var(--surface-2); }
+  .pl-head h2 { margin: 0 0 2px; font-size: 22px; letter-spacing: -0.01em; }
+  .pl-head .btn { margin-top: 12px; }
+  .note { margin-top: 4px; color: var(--warn); font-size: 13px; }
+  .dock { position: fixed; right: 0; bottom: 0; left: 0; background: rgba(12, 12, 13, .92); border-top: 1px solid var(--line); backdrop-filter: blur(14px); }
+  .dock-inner { max-width: 760px; margin: 0 auto; padding: 14px 20px 16px; }
+  .dock-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .dock-line > div { min-width: 0; }
+  .bar { height: 3px; margin-top: 12px; overflow: hidden; background: var(--surface-2); border-radius: 3px; }
+  .bar i { display: block; width: 0; height: 100%; background: var(--accent); transition: width .3s ease; }
+  details { margin-top: 10px; color: var(--muted); font-size: 13px; }
+  details ul { max-height: 180px; margin: 8px 0 0; padding-left: 18px; overflow: auto; }
+  .bad { color: var(--danger); }
+  dialog { width: min(420px, calc(100vw - 32px)); padding: 22px; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 14px; }
+  dialog::backdrop { background: rgba(0, 0, 0, .6); }
+  dialog h2 { margin: 0 0 6px; font-size: 18px; }
+  .field { display: grid; gap: 6px; margin-top: 16px; color: var(--muted); font-size: 14px; }
+  .field input { height: 38px; padding: 0 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+  .help { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+  .help.bad { color: var(--danger); }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  @media (max-width: 560px) {
+    .wrap { padding-top: 28px; }
+    .row { grid-template-columns: 40px minmax(0, 1fr) auto; }
+    .art { width: 40px; height: 40px; }
+    .time { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">retro<b>·</b>ears</div>
+    <button class="btn" id="premiumBtn" type="button">Premium: Off</button>
+  </header>
+
+  <form class="search" id="searchForm" role="search">
+    <input id="q" type="search" autocomplete="off" spellcheck="false" autofocus
+      placeholder="Search songs or playlists, or paste a link…"
+      aria-label="Search songs or playlists, or paste a link">
+    <button class="btn primary" type="submit">Search</button>
+  </form>
+
+  <div class="toolbar">
+    <div class="tabs" role="tablist" aria-label="Search for">
+      <button class="tab" role="tab" type="button" data-tab="songs" aria-selected="true">Songs</button>
+      <button class="tab" role="tab" type="button" data-tab="playlists" aria-selected="false">Playlists</button>
+    </div>
+    <label class="format">Format
+      <select id="format">
+        <option value="m4a">M4A · iPod</option>
+        <option value="opus">Opus · Rockbox</option>
+        <option value="mp3">MP3 320</option>
+      </select>
+    </label>
+  </div>
+
+  <main id="results" aria-live="polite">
+    <p class="state">Search for a song or playlist, or paste a YouTube, Spotify or Apple Music link.</p>
+  </main>
+</div>
+
+<div class="dock" id="dock" hidden>
+  <div class="dock-inner">
+    <div class="dock-line">
+      <div>
+        <div class="title" id="dockTitle"></div>
+        <div class="sub" id="dockSub"></div>
+      </div>
+      <button class="btn" id="dockAction" type="button"></button>
+    </div>
+    <div class="bar" id="dockBar"><i id="dockFill"></i></div>
+    <details id="dockDetails" hidden>
+      <summary>Details</summary>
+      <ul id="dockList"></ul>
+    </details>
+  </div>
+</div>
+
+<dialog id="premiumDialog" aria-labelledby="premiumTitle">
+  <form method="dialog">
+    <h2 id="premiumTitle">YouTube Premium</h2>
+    <p class="help">Optional. Uses your own Premium login from a browser to get 256 kbps audio. Without it you still get the best free quality.</p>
+    <label class="field">Login from
+      <select id="cookieSource">
+        <option value="off">Off</option>
+        <option value="firefox">Firefox</option>
+        <option value="safari">Safari</option>
+        <option value="chrome">Chrome</option>
+        <option value="file">cookies.txt file</option>
+      </select>
+    </label>
+    <label class="field" id="cookieFileField" hidden>Path to cookies.txt
+      <input id="cookieFile" type="text" spellcheck="false">
+    </label>
+    <p class="help" id="cookieHint"></p>
+    <p class="help bad" id="premiumError" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button class="btn" value="cancel">Cancel</button>
+      <button class="btn primary" id="premiumSave" type="button">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  const $ = (selector) => document.querySelector(selector);
+  const els = {
+    q: $("#q"), results: $("#results"), format: $("#format"),
+    dock: $("#dock"), dockTitle: $("#dockTitle"), dockSub: $("#dockSub"), dockAction: $("#dockAction"),
+    dockBar: $("#dockBar"), dockFill: $("#dockFill"), dockDetails: $("#dockDetails"), dockList: $("#dockList"),
+    premiumBtn: $("#premiumBtn"), premiumDialog: $("#premiumDialog"), cookieSource: $("#cookieSource"),
+    cookieFileField: $("#cookieFileField"), cookieFile: $("#cookieFile"), cookieHint: $("#cookieHint"),
+    premiumError: $("#premiumError"),
+  };
+  const state = { tab: "songs", jobId: null, back: null, platform: null, seq: 0 };
+  const encode = encodeURIComponent;
+  const isLink = (text) => /^https?:\/\//i.test(text.trim());
+
+  function h(tag, props = {}, ...children) {
+    const el = document.createElement(tag);
+    for (const [key, value] of Object.entries(props)) {
+      if (value === null || value === undefined || value === false) continue;
+      if (key === "class") el.className = value;
+      else if (key.startsWith("on")) el.addEventListener(key.slice(2), value);
+      else el.setAttribute(key, value === true ? "" : value);
+    }
+    for (const child of children.flat()) {
+      if (child === null || child === undefined || child === false) continue;
+      el.append(child instanceof Node ? child : String(child));
+    }
+    return el;
+  }
+
+  async function api(path, options = {}) {
+    let response;
+    try {
+      response = await fetch(path, { ...options, headers: { "Content-Type": "application/json" } });
+    } catch {
+      throw new Error("retro-ears isn't running. Start it again with run.sh or run.ps1.");
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Something went wrong.");
+    return data;
+  }
+
+  function readStored(key, fallback) {
+    try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+  }
+  function writeStored(key, value) {
+    try { localStorage.setItem(key, value); } catch { /* storage unavailable */ }
+  }
+
+  /* ---------- results ---------- */
+
+  function show(...nodes) { els.results.replaceChildren(...nodes.filter(Boolean)); }
+  function showMessage(text, isError = false) { show(h("p", { class: isError ? "state error" : "state" }, text)); }
+
+  function duration(seconds) {
+    if (seconds === null || seconds === undefined) return "";
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  }
+
+  function image(url, className) {
+    return url
+      ? h("img", { class: className, src: url, alt: "", loading: "lazy", referrerpolicy: "no-referrer" })
+      : h("div", { class: className });
+  }
+
+  function songRow(track) {
+    return h("li", { class: "row" },
+      image(track.art_url, "art"),
+      h("div", {},
+        h("div", { class: "title" }, track.title),
+        h("div", { class: "sub" }, [track.artist, track.album].filter(Boolean).join(" · "))),
+      h("span", { class: "time" }, duration(track.duration_s)),
+      h("div", { class: "actions" },
+        h("button", {
+          class: "btn icon", type: "button", title: "Download", "aria-label": `Download ${track.title}`,
+          onclick: () => startJob([track], `${track.artist} - ${track.title}`),
+        }, "↓")));
+  }
+
+  function renderSongs(songs) {
+    if (!songs.length) return showMessage("No songs found");
+    state.back = () => renderSongs(songs);
+    show(h("ul", { class: "list" }, songs.map(songRow)));
+  }
+
+  function renderPlaylists(playlists) {
+    if (!playlists.length) return showMessage("No playlists found");
+    state.back = () => renderPlaylists(playlists);
+    show(h("ul", { class: "list" }, playlists.map((playlist) => h("li", { class: "row" },
+      image(playlist.art_url, "art"),
+      h("div", {},
+        h("div", { class: "title" }, playlist.name),
+        h("div", { class: "sub" }, playlist.count ? `${playlist.count} songs` : "Playlist")),
+      h("span", { class: "time" }),
+      h("div", { class: "actions" },
+        h("button", { class: "btn", type: "button", onclick: () => openPlaylist(playlist.id) }, "View"),
+        h("button", {
+          class: "btn icon", type: "button", title: "Download all", "aria-label": `Download all of ${playlist.name}`,
+          onclick: () => downloadPlaylist(playlist.id),
+        }, "↓"))))));
+  }
+
+  function renderPlaylist(playlist, back) {
+    const tracks = playlist.tracks || [];
+    show(
+      back && h("button", { class: "back", type: "button", onclick: back }, "← Back"),
+      h("div", { class: "pl-head" },
+        image(playlist.art_url, "cover"),
+        h("div", {},
+          h("h2", {}, playlist.name),
+          h("div", { class: "sub" }, `${tracks.length} songs`),
+          playlist.note && h("div", { class: "note" }, playlist.note),
+          h("button", {
+            class: "btn primary", type: "button", disabled: !tracks.length,
+            onclick: () => startJob(tracks, playlist.name),
+          }, "Download all"))),
+      tracks.length
+        ? h("ul", { class: "list" }, tracks.map(songRow))
+        : h("p", { class: "state" }, "This playlist has no downloadable songs."));
+  }
+
+  async function runSearch() {
+    const text = els.q.value.trim();
+    if (!text) return;
+    const seq = ++state.seq;
+    showMessage(isLink(text) ? "Reading link…" : "Searching…");
+    try {
+      const data = await api(`/api/search?q=${encode(text)}&type=${state.tab}`);
+      if (seq !== state.seq) return;
+      if (data.type === "songs") renderSongs(data.songs);
+      else if (data.type === "playlists") renderPlaylists(data.playlists);
+      else { state.back = null; renderPlaylist(data.playlist, null); }
+    } catch (error) {
+      if (seq === state.seq) showMessage(error.message, true);
+    }
+  }
+
+  async function openPlaylist(id) {
+    const back = state.back;
+    const seq = ++state.seq;
+    showMessage("Loading playlist…");
+    try {
+      const playlist = await api(`/api/playlist?id=${encode(id)}`);
+      if (seq === state.seq) renderPlaylist(playlist, back);
+    } catch (error) {
+      if (seq === state.seq) showMessage(error.message, true);
+    }
+  }
+
+  /* ---------- downloads ---------- */
+
+  function setDock({ title, sub = "", progress = null, action = null, results = null, error = false }) {
+    els.dock.hidden = false;
+    els.dockTitle.textContent = title;
+    els.dockTitle.classList.toggle("bad", error);
+    els.dockSub.textContent = sub;
+    els.dockAction.hidden = !action;
+    if (action) {
+      els.dockAction.textContent = action.label;
+      els.dockAction.onclick = action.run;
+    }
+    els.dockBar.hidden = progress === null;
+    if (progress !== null) els.dockFill.style.width = `${Math.round(progress * 100)}%`;
+    els.dockDetails.hidden = !(results && results.length);
+    if (results) {
+      els.dockList.replaceChildren(...results.map((result) => h("li", {},
+        `${result.artist} — ${result.title}: `,
+        result.error ? h("span", { class: "bad" }, result.error) : result.quality)));
+    }
+  }
+
+  const hideDock = () => { els.dock.hidden = true; };
+  const closeAction = { label: "Close", run: hideDock };
+  const nudgeBusy = () => { els.dockSub.textContent = "Finish or cancel the current download first."; };
+
+  async function startJob(tracks, name) {
+    if (state.jobId) return nudgeBusy();
+    if (!tracks.length) return setDock({ title: "Nothing to download", error: true, action: closeAction });
+    state.jobId = "starting";
+    setDock({ title: tracks.length === 1 ? `Starting ${tracks[0].title}…` : `Starting ${name}…`, progress: 0 });
+    try {
+      const { id } = await api("/api/jobs", { method: "POST", body: JSON.stringify({ tracks, format: els.format.value, name }) });
+      state.jobId = id;
+      pollJob(id);
+    } catch (error) {
+      state.jobId = null;
+      setDock({ title: error.message, error: true, action: closeAction });
+    }
+  }
+
+  async function downloadPlaylist(id) {
+    if (state.jobId) return nudgeBusy();
+    setDock({ title: "Loading playlist…", progress: 0 });
+    try {
+      const playlist = await api(`/api/playlist?id=${encode(id)}`);
+      await startJob(playlist.tracks, playlist.name);
+    } catch (error) {
+      setDock({ title: error.message, error: true, action: closeAction });
+    }
+  }
+
+  async function pollJob(id) {
+    let job;
+    try {
+      job = await api(`/api/jobs/${encode(id)}`);
+    } catch (error) {
+      state.jobId = null;
+      return setDock({ title: error.message, error: true, action: closeAction });
+    }
+    const single = job.total === 1;
+    const finished = job.done + job.failed;
+    if (job.status === "running") {
+      setDock({
+        title: single ? `Downloading ${job.current || job.name}` : `Downloading ${finished} / ${job.total}`,
+        sub: single ? "" : job.current || "",
+        progress: single ? null : finished / job.total,
+        action: {
+          label: job.cancelled ? "Cancelling…" : "Cancel",
+          run: () => api(`/api/jobs/${encode(id)}/cancel`, { method: "POST" }).catch(() => {}),
+        },
+      });
+      setTimeout(() => pollJob(id), 1000);
+      return;
+    }
+    state.jobId = null;
+    if (job.status === "done") saveFile(id);
+    const first = job.results[0] || {};
+    setDock({
+      title: job.name,
+      sub: single
+        ? (job.done ? `Downloaded · ${first.quality}` : `Failed · ${first.error || "Cancelled"}`)
+        : `${job.done} done · ${job.failed} failed${job.cancelled ? " · cancelled" : ""}`,
+      error: job.status === "failed",
+      results: single ? null : job.results,
+      action: closeAction,
+    });
+  }
+
+  function saveFile(id) {
+    const link = h("a", { href: `/api/jobs/${encode(id)}/file`, download: "" });
+    document.body.append(link);
+    link.click();
+    link.remove();
+  }
+
+  /* ---------- Premium ---------- */
+
+  const SOURCE_NAMES = { off: "Off", firefox: "Firefox", safari: "Safari", chrome: "Chrome", file: "cookies.txt" };
+
+  function applySettings(saved) {
+    state.platform = saved.platform;
+    const source = saved.cookie_source.startsWith("file:") ? "file" : saved.cookie_source;
+    els.cookieSource.value = source;
+    els.cookieFile.value = source === "file" ? saved.cookie_source.slice(5) : "";
+    els.cookieSource.querySelector('[value="safari"]').disabled = saved.platform !== "darwin";
+    els.cookieSource.querySelector('[value="chrome"]').disabled = saved.platform === "win32";
+    els.premiumBtn.textContent = `Premium: ${SOURCE_NAMES[source] || "Off"}`;
+    updatePremiumFields();
+  }
+
+  function updatePremiumFields() {
+    const source = els.cookieSource.value;
+    els.cookieFileField.hidden = source !== "file";
+    els.premiumError.hidden = true;
+    const hints = [];
+    if (state.platform === "win32") hints.push("Chrome and Edge logins can't be read on Windows — use Firefox or a cookies.txt file.");
+    if (source === "chrome") hints.push("macOS may ask for Keychain access the first time.");
+    if (source === "safari") hints.push("Safari needs Full Disk Access for the terminal running retro-ears.");
+    if (source === "file") hints.push("Export it from a browser where you're signed in to YouTube.");
+    els.cookieHint.textContent = hints.join(" ");
+  }
+
+  async function loadSettings() {
+    try { applySettings(await api("/api/settings")); } catch { /* keep defaults */ }
+  }
+
+  /* ---------- wiring ---------- */
+
+  $("#searchForm").addEventListener("submit", (event) => { event.preventDefault(); runSearch(); });
+
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      state.tab = tab.dataset.tab;
+      document.querySelectorAll(".tab").forEach((other) => other.setAttribute("aria-selected", String(other === tab)));
+      const text = els.q.value.trim();
+      if (text && !isLink(text)) runSearch();
+    });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName);
+    if (event.key === "/" && !typing) { event.preventDefault(); els.q.focus(); }
+  });
+
+  els.format.value = readStored("format", "m4a");
+  if (!els.format.value) els.format.value = "m4a";
+  els.format.addEventListener("change", () => writeStored("format", els.format.value));
+
+  els.cookieSource.addEventListener("change", updatePremiumFields);
+  els.premiumBtn.addEventListener("click", () => els.premiumDialog.showModal());
+  els.premiumDialog.addEventListener("close", loadSettings);
+  $("#premiumSave").addEventListener("click", async () => {
+    const source = els.cookieSource.value;
+    const value = source === "file" ? `file:${els.cookieFile.value.trim()}` : source;
+    try {
+      applySettings(await api("/api/settings", { method: "PUT", body: JSON.stringify({ cookie_source: value }) }));
+      els.premiumDialog.close();
+    } catch (error) {
+      els.premiumError.textContent = error.message;
+      els.premiumError.hidden = false;
+    }
+  });
+
+  loadSettings();
+</script>
+</body>
+</html>
