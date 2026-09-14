@@ -2577,7 +2577,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_app.py -v`
-Expected: 17 passed
+Expected: 16 passed
 
 - [ ] **Step 5: Run the whole offline suite**
 
@@ -3108,7 +3108,7 @@ Expected: FAIL (FileResponse raises because `static/index.html` does not exist)
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest tests/test_app.py -v`
-Expected: 18 passed
+Expected: 17 passed
 
 - [ ] **Step 5: Manual check in a real browser**
 
