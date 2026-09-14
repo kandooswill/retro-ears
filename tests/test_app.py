@@ -1,0 +1,144 @@
+import time
+
+import pytest
+from fastapi.testclient import TestClient
+
+import app as app_module
+import jobs
+from models import NotFound, NotSupported, Offline, PlaylistInfo, Track
+
+
+def build_app(tmp_path, fake_fetch):
+    manager = jobs.JobManager(root=tmp_path / "jobs", fetch=fake_fetch(), match=lambda track: track)
+    return app_module.create_app(manager=manager, settings_file=tmp_path / "settings.json")
+
+
+@pytest.fixture
+def client(tmp_path, fake_fetch):
+    return TestClient(build_app(tmp_path, fake_fetch), base_url="http://127.0.0.1:8787")
+
+
+def wait_for(client, job_id):
+    for _ in range(500):
+        status = client.get(f"/api/jobs/{job_id}").json()
+        if status["status"] != "running":
+            return status
+        time.sleep(0.02)
+    raise AssertionError("job did not finish")
+
+
+def test_rejects_other_host_names(client):
+    response = client.get("/api/settings", headers={"host": "evil.example:8787"})
+    assert response.status_code == 403
+
+
+def test_allows_localhost_name(tmp_path, fake_fetch):
+    local = TestClient(build_app(tmp_path, fake_fetch), base_url="http://localhost:8787")
+    assert local.get("/api/settings").status_code == 200
+
+
+def test_search_returns_songs(client, monkeypatch):
+    calls = []
+
+    def fake_resolve(text, tab):
+        calls.append((text, tab))
+        return {"type": "songs", "songs": [Track(title="Song", artist="Artist", video_id="abc")]}
+
+    monkeypatch.setattr(app_module.links, "resolve", fake_resolve)
+    response = client.get("/api/search", params={"q": "song", "type": "songs"})
+    assert response.status_code == 200
+    assert response.json() == {
+        "type": "songs",
+        "songs": [{"title": "Song", "artist": "Artist", "album": None, "duration_s": None, "art_url": None, "video_id": "abc"}],
+    }
+    assert calls == [("song", "songs")]
+
+
+def test_search_defaults_to_songs_tab(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(app_module.links, "resolve", lambda text, tab: calls.append(tab) or {"type": "songs", "songs": []})
+    client.get("/api/search", params={"q": "x"})
+    assert calls == ["songs"]
+
+
+def test_search_requires_text(client):
+    response = client.get("/api/search", params={"q": "   "})
+    assert response.status_code == 400
+    assert response.json() == {"error": "Type something to search"}
+
+
+@pytest.mark.parametrize(
+    "error,status",
+    [
+        (NotSupported("Link not supported — paste a YouTube, YouTube Music, Spotify or Apple Music link"), 400),
+        (NotFound("This playlist is private or doesn't exist"), 404),
+        (Offline("Couldn't reach YouTube Music. Check your connection."), 502),
+    ],
+)
+def test_search_errors_become_json(client, monkeypatch, error, status):
+    def boom(text, tab):
+        raise error
+
+    monkeypatch.setattr(app_module.links, "resolve", boom)
+    response = client.get("/api/search", params={"q": "x"})
+    assert response.status_code == status
+    assert response.json() == {"error": str(error)}
+
+
+def test_playlist_route(client, monkeypatch):
+    monkeypatch.setattr(app_module.ytmusic, "get_playlist", lambda playlist_id: PlaylistInfo(id=playlist_id, name="Mix", count=0))
+    response = client.get("/api/playlist", params={"id": "VLabc"})
+    assert response.status_code == 200
+    assert response.json()["id"] == "VLabc"
+    assert response.json()["name"] == "Mix"
+
+
+def test_job_lifecycle_returns_zip(client):
+    body = {
+        "tracks": [{"title": "One", "artist": "A", "video_id": "v1"}, {"title": "Two", "artist": "A", "video_id": "v2"}],
+        "format": "m4a",
+        "name": "Mix",
+    }
+    job_id = client.post("/api/jobs", json=body).json()["id"]
+    status = wait_for(client, job_id)
+    assert (status["status"], status["done"], status["total"]) == ("done", 2, 2)
+    response = client.get(f"/api/jobs/{job_id}/file")
+    assert response.status_code == 200
+    assert response.headers["content-disposition"] == 'attachment; filename="Mix.zip"'
+
+
+def test_job_rejects_bad_format(client):
+    response = client.post("/api/jobs", json={"tracks": [{"title": "a", "artist": "b"}], "format": "wav"})
+    assert response.status_code == 422
+
+
+def test_job_rejects_empty_track_list(client):
+    response = client.post("/api/jobs", json={"tracks": [], "format": "m4a"})
+    assert response.status_code == 422
+
+
+def test_unknown_job(client):
+    response = client.get("/api/jobs/nope")
+    assert response.status_code == 404
+    assert response.json() == {"error": "Download not found"}
+
+
+def test_cancel_job(client):
+    job_id = client.post("/api/jobs", json={"tracks": [{"title": "a", "artist": "b", "video_id": "v"}]}).json()["id"]
+    assert client.post(f"/api/jobs/{job_id}/cancel").json() == {"ok": True}
+
+
+def test_settings_round_trip(client):
+    initial = client.get("/api/settings").json()
+    assert initial["cookie_source"] == "off"
+    assert "platform" in initial
+    saved = client.put("/api/settings", json={"cookie_source": "firefox"})
+    assert saved.status_code == 200
+    assert saved.json()["cookie_source"] == "firefox"
+    assert client.get("/api/settings").json()["cookie_source"] == "firefox"
+
+
+def test_settings_rejects_unknown_source(client):
+    response = client.put("/api/settings", json={"cookie_source": "netscape"})
+    assert response.status_code == 400
+    assert response.json() == {"error": "Unknown login source"}
