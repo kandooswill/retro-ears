@@ -90,7 +90,7 @@ class Playlist:
     cover_url: str | None
     tracks: list[Track]
     total: int | None            # real track count if known
-    truncated: bool              # True when total > len(tracks)
+    truncated: bool              # True when more tracks exist or may exist (Spotify: exactly 100 returned)
 
 class JobState(Enum):
     QUEUED, MATCHING, NEEDS_REVIEW, DOWNLOADING, TAGGING, DELIVERING, DONE, FAILED
