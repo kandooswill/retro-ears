@@ -32,7 +32,7 @@ If downloads start failing, YouTube probably changed something. Update and resta
 
 | Format | What you get | Best for |
 |---|---|---|
-| **M4A** | YouTube's own AAC audio, not converted (about 130 kbps, 256 with Premium) | Stock iPod |
+| **AAC (.m4a)** | YouTube's own AAC audio, not converted (about 130 kbps, 256 with Premium) | Stock iPod |
 | **Opus** | YouTube's own Opus audio, not converted (about 130 kbps, 256 with Premium) | Rockbox |
 | **MP3 320** | Converted from the best stream — plays anywhere, but isn't better than the source | Everything else |
 
