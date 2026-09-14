@@ -6,6 +6,7 @@ import mutagen
 import pytest
 
 import download
+import ytmusic
 from models import Track
 
 pytestmark = pytest.mark.live
@@ -32,3 +33,20 @@ def test_download_real_song(tmp_path, fmt):
     audio = mutagen.File(result.path, easy=True)
     assert audio["title"] == ["Blinding Lights"]
     assert audio["artist"] == ["The Weeknd"]
+
+
+def test_search_songs_live():
+    songs = ytmusic.search_songs("the weeknd blinding lights", limit=5)
+    assert songs and all(song.video_id for song in songs)
+
+
+def test_search_and_open_playlist_live():
+    playlists = ytmusic.search_playlists("80s hits", limit=5)
+    assert playlists
+    playlist = ytmusic.get_playlist(playlists[0].id)
+    assert playlist.tracks and all(track.video_id for track in playlist.tracks)
+
+
+def test_match_live():
+    matched = ytmusic.match(Track(title="Blinding Lights", artist="The Weeknd", duration_s=200))
+    assert matched.video_id
