@@ -1,0 +1,10 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+yt-dlp[default]>=2026.8.19
+ytmusicapi>=1.12
+mutagen>=1.48
+pillow>=11.0
+imageio-ffmpeg>=0.6
+deno>=2.9
+httpx>=0.28
+certifi>=2024.2.2
