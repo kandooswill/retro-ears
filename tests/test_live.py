@@ -1,7 +1,4 @@
-"""Network tests. Run with: .venv/bin/pytest -m live -s
-Set RETRO_COOKIES=<firefox|safari|chrome|file:/path> to test with a Premium login."""
-import os
-
+"""Network tests. Run with: .venv/bin/pytest -m live -s"""
 import mutagen
 import pytest
 
@@ -12,7 +9,6 @@ from models import Track
 
 pytestmark = pytest.mark.live
 
-COOKIES = os.environ.get("RETRO_COOKIES", "off")
 SONG = Track(
     title="Blinding Lights",
     artist="The Weeknd",
@@ -26,8 +22,8 @@ LABEL_PREFIX = {"m4a": "AAC", "opus": "Opus", "mp3": "MP3 320"}
 
 @pytest.mark.parametrize("fmt", download.FORMATS)
 def test_download_real_song(tmp_path, fmt):
-    result = download.fetch(SONG, fmt, tmp_path, cookie_source=COOKIES)
-    print(f"\n{fmt} (cookies={COOKIES}): {result.quality}")
+    result = download.fetch(SONG, fmt, tmp_path)
+    print(f"\n{fmt}: {result.quality}")
     assert result.path.suffix == f".{fmt}"
     assert result.path.stat().st_size > 1_000_000
     assert result.quality.startswith(LABEL_PREFIX[fmt])

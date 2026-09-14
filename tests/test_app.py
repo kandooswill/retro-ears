@@ -10,7 +10,7 @@ from models import NotFound, NotSupported, Offline, PlaylistInfo, Track
 
 def build_app(tmp_path, fake_fetch):
     manager = jobs.JobManager(root=tmp_path / "jobs", fetch=fake_fetch(), match=lambda track: track)
-    return app_module.create_app(manager=manager, settings_file=tmp_path / "settings.json")
+    return app_module.create_app(manager=manager)
 
 
 @pytest.fixture
@@ -28,13 +28,13 @@ def wait_for(client, job_id):
 
 
 def test_rejects_other_host_names(client):
-    response = client.get("/api/settings", headers={"host": "evil.example:8787"})
+    response = client.get("/api/jobs/nope", headers={"host": "evil.example:8787"})
     assert response.status_code == 403
 
 
 def test_allows_localhost_name(tmp_path, fake_fetch):
     local = TestClient(build_app(tmp_path, fake_fetch), base_url="http://localhost:8787")
-    assert local.get("/api/settings").status_code == 200
+    assert local.get("/api/jobs/nope").status_code == 404
 
 
 def test_search_returns_songs(client, monkeypatch):
@@ -128,20 +128,8 @@ def test_cancel_job(client):
     assert client.post(f"/api/jobs/{job_id}/cancel").json() == {"ok": True}
 
 
-def test_settings_round_trip(client):
-    initial = client.get("/api/settings").json()
-    assert initial["cookie_source"] == "off"
-    assert "platform" in initial
-    saved = client.put("/api/settings", json={"cookie_source": "firefox"})
-    assert saved.status_code == 200
-    assert saved.json()["cookie_source"] == "firefox"
-    assert client.get("/api/settings").json()["cookie_source"] == "firefox"
-
-
-def test_settings_rejects_unknown_source(client):
-    response = client.put("/api/settings", json={"cookie_source": "netscape"})
-    assert response.status_code == 400
-    assert response.json() == {"error": "Unknown login source"}
+def test_settings_routes_are_gone(client):
+    assert client.get("/api/settings").status_code == 404
 
 
 def test_index_page(client):
@@ -150,3 +138,4 @@ def test_index_page(client):
     assert "text/html" in response.headers["content-type"]
     assert "<title>retro-ears</title>" in response.text
     assert 'id="searchForm"' in response.text
+    assert "Premium" not in response.text

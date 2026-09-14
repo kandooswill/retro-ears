@@ -14,7 +14,6 @@ from starlette.exceptions import HTTPException
 
 import jobs
 import links
-import settings
 import ytmusic
 from models import NotFound, Offline, ParseChanged, RetroError, Track
 
@@ -39,10 +38,6 @@ class JobIn(BaseModel):
     name: str = Field(default="retro-ears", max_length=200)
 
 
-class SettingsIn(BaseModel):
-    cookie_source: str
-
-
 def _status_for(error: RetroError) -> int:
     if isinstance(error, NotFound):
         return 404
@@ -51,9 +46,9 @@ def _status_for(error: RetroError) -> int:
     return 400
 
 
-def create_app(manager: jobs.JobManager | None = None, settings_file: Path | None = None) -> FastAPI:
+def create_app(manager: jobs.JobManager | None = None) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    manager = manager or jobs.JobManager(cookie_source=lambda: settings.load(settings_file)["cookie_source"])
+    manager = manager or jobs.JobManager()
 
     @app.middleware("http")
     async def only_local_host(request: Request, call_next):
@@ -105,18 +100,6 @@ def create_app(manager: jobs.JobManager | None = None, settings_file: Path | Non
     def cancel_job(job_id: str):
         manager.cancel(job_id)
         return {"ok": True}
-
-    @app.get("/api/settings")
-    def get_settings():
-        return {**settings.load(settings_file), "platform": sys.platform}
-
-    @app.put("/api/settings")
-    def put_settings(body: SettingsIn):
-        try:
-            saved = settings.save({"cookie_source": body.cookie_source}, settings_file)
-        except ValueError as error:
-            raise HTTPException(400, str(error)) from error
-        return {**saved, "platform": sys.platform}
 
     return app
 

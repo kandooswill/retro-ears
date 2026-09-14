@@ -60,7 +60,7 @@ def test_all_failed_job_has_no_file(tmp_path, fake_fetch, wait_job):
 
 
 def test_unexpected_errors_are_recorded(tmp_path, wait_job):
-    def broken_fetch(track, fmt, workdir, cookie_source="off"):
+    def broken_fetch(track, fmt, workdir):
         raise ValueError("boom")
 
     manager = manager_for(tmp_path, broken_fetch)
@@ -82,10 +82,10 @@ def test_cancel_skips_queued_songs(tmp_path, fake_fetch, wait_job):
     started, release = threading.Event(), threading.Event()
     base = fake_fetch()
 
-    def slow_fetch(track, fmt, workdir, cookie_source="off"):
+    def slow_fetch(track, fmt, workdir):
         started.set()
         release.wait(5)
-        return base(track, fmt, workdir, cookie_source)
+        return base(track, fmt, workdir)
 
     manager = manager_for(tmp_path, slow_fetch, workers=1)
     job = manager.start(TRACKS, "m4a", "Mix")
@@ -100,9 +100,9 @@ def test_file_while_running_raises(tmp_path, fake_fetch, wait_job):
     release = threading.Event()
     base = fake_fetch()
 
-    def slow_fetch(track, fmt, workdir, cookie_source="off"):
+    def slow_fetch(track, fmt, workdir):
         release.wait(5)
-        return base(track, fmt, workdir, cookie_source)
+        return base(track, fmt, workdir)
 
     manager = manager_for(tmp_path, slow_fetch)
     job = manager.start(TRACKS[:1], "m4a", "Mix")
@@ -112,12 +112,12 @@ def test_file_while_running_raises(tmp_path, fake_fetch, wait_job):
     wait_job(manager, job.id)
 
 
-def test_cookie_source_is_passed_to_fetch(tmp_path, fake_fetch, wait_job):
+def test_format_is_passed_to_fetch(tmp_path, fake_fetch, wait_job):
     calls = []
-    manager = manager_for(tmp_path, fake_fetch(calls=calls), cookie_source=lambda: "firefox")
+    manager = manager_for(tmp_path, fake_fetch(calls=calls))
     job = manager.start(TRACKS[:1], "mp3", "Mix")
     wait_job(manager, job.id)
-    assert calls[0][1:] == ("mp3", "firefox")
+    assert calls[0][1] == "mp3"
 
 
 def test_unknown_job_raises_not_found(tmp_path, fake_fetch):

@@ -13,18 +13,15 @@ TRACK = Track(title="Song", artist="Artist", album="Album", duration_s=1, art_ur
 
 
 @pytest.mark.parametrize(
-    "fmt,premium,expected",
+    "fmt,expected",
     [
-        ("m4a", False, "140/bestaudio[ext=m4a]"),
-        ("m4a", True, "141/140/bestaudio[ext=m4a]"),
-        ("opus", False, "251/bestaudio[acodec=opus]"),
-        ("opus", True, "774/251/bestaudio[acodec=opus]"),
-        ("mp3", False, "251/140/bestaudio"),
-        ("mp3", True, "774/141/251/140/bestaudio"),
+        ("m4a", "140/bestaudio[ext=m4a]"),
+        ("opus", "251/bestaudio[acodec=opus]"),
+        ("mp3", "251/140/bestaudio"),
     ],
 )
-def test_format_string(fmt, premium, expected):
-    assert download.format_string(fmt, premium) == expected
+def test_format_string(fmt, expected):
+    assert download.format_string(fmt) == expected
 
 
 def test_postprocessor_copies_m4a_and_opus_streams():
@@ -36,15 +33,8 @@ def test_postprocessor_mp3_is_320():
     assert download.postprocessor("mp3") == {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "320"}
 
 
-def test_cookie_opts():
-    assert download.cookie_opts("off") == {}
-    assert download.cookie_opts("") == {}
-    assert download.cookie_opts("chrome") == {"cookiesfrombrowser": ("chrome", None, None, None)}
-    assert download.cookie_opts("file:/tmp/cookies.txt") == {"cookiefile": "/tmp/cookies.txt"}
-
-
-def test_build_opts_without_premium(tmp_path):
-    opts = download.build_opts("opus", tmp_path, "off")
+def test_build_opts(tmp_path):
+    opts = download.build_opts("opus", tmp_path)
     assert opts["format"] == "251/bestaudio[acodec=opus]"
     assert opts["outtmpl"] == str(tmp_path / "%(id)s.%(ext)s")
     assert opts["postprocessors"] == [download.postprocessor("opus")]
@@ -53,15 +43,9 @@ def test_build_opts_without_premium(tmp_path):
     assert "cookiesfrombrowser" not in opts and "cookiefile" not in opts
 
 
-def test_build_opts_with_premium(tmp_path):
-    opts = download.build_opts("m4a", tmp_path, "firefox")
-    assert opts["format"] == "141/140/bestaudio[ext=m4a]"
-    assert opts["cookiesfrombrowser"] == ("firefox", None, None, None)
-
-
 def test_deno_is_found_in_the_virtualenv(tmp_path):
     assert download.deno_path() is not None
-    assert download.build_opts("m4a", tmp_path, "off")["js_runtimes"] == {"deno": {"path": download.deno_path()}}
+    assert download.build_opts("m4a", tmp_path)["js_runtimes"] == {"deno": {"path": download.deno_path()}}
 
 
 @pytest.mark.parametrize(
@@ -106,7 +90,7 @@ def test_unique_path_adds_counter(tmp_path):
 @pytest.mark.parametrize(
     "message,expected",
     [
-        ("ERROR: [youtube] abc: Sign in to confirm your age. This video may be inappropriate for some users.", "Age-restricted — needs a Premium login"),
+        ("ERROR: [youtube] abc: Sign in to confirm your age. This video may be inappropriate for some users.", "Age-restricted on YouTube"),
         ("ERROR: [youtube] abc: Video unavailable", "Unavailable on YouTube"),
         ("ERROR: [youtube] abc: Private video. Sign in if you've been granted access to this video", "Unavailable on YouTube"),
         ("ERROR: [youtube] abc: Requested format is not available. Use --list-formats", "No audio stream in this format"),
@@ -118,11 +102,9 @@ def test_friendly_error(message, expected):
     assert download.friendly_error(message) == expected
 
 
-def make_fake_extract(source: Path, ext: str, calls: list, fail_with_cookies: bool = False):
+def make_fake_extract(source: Path, ext: str, calls: list):
     def fake_extract(opts, url):
         calls.append((opts, url))
-        if fail_with_cookies and ("cookiesfrombrowser" in opts or "cookiefile" in opts):
-            raise RuntimeError("could not read cookies")
         out = Path(opts["outtmpl"]).parent / f"abc123def45.{ext}"
         shutil.copy(source, out)
         return {"acodec": "mp4a.40.2", "abr": 129.548, "requested_downloads": [{"filepath": str(out)}]}
@@ -155,18 +137,6 @@ def test_fetch_same_song_twice_gets_unique_names(tmp_path, monkeypatch, silent_f
     second = download.fetch(TRACK, "m4a", workdir)
     assert first.path.name == "Artist - Song.m4a"
     assert second.path.name == "Artist - Song (2).m4a"
-
-
-def test_fetch_falls_back_to_free_quality_when_login_fails(tmp_path, monkeypatch, silent_file):
-    calls = []
-    monkeypatch.setattr(download, "_extract", make_fake_extract(silent_file("m4a"), "m4a", calls, fail_with_cookies=True))
-    monkeypatch.setattr(tags, "fetch_art", lambda url: None)
-
-    result = download.fetch(TRACK, "m4a", tmp_path / "job", cookie_source="firefox")
-
-    assert [opts["format"] for opts, _ in calls] == ["141/140/bestaudio[ext=m4a]", "140/bestaudio[ext=m4a]"]
-    assert "cookiesfrombrowser" not in calls[1][0]
-    assert result.path.exists()
 
 
 def test_fetch_error_is_friendly_and_cleans_up(tmp_path, monkeypatch):

@@ -1,7 +1,7 @@
 # retro-ears — Design Spec (v2, simplified)
 
 - **Date:** 2026-09-14
-- **Status:** v2 design approved; replaces the v1 spec (commit a243b78)
+- **Status:** v2 design approved; replaces the v1 spec (commit a243b78). v2.1 (2026-09-14): optional Premium login removed after testing showed no quality gain (§3); the m4a format is labelled "AAC (.m4a)".
 - **Owner:** Kushal
 - **Reference:** ytmp3.gl — one input, one button, a file download. retro-ears keeps that simplicity and adds search, playlists, iPod-ready tags and honest quality choices.
 
@@ -21,6 +21,7 @@ Runs on the user's own computer (macOS and Windows) at `http://127.0.0.1:8787`.
 
 - Public hosted service.
 - Touching Spotify or Apple Music audio (DRM). Only public track names/artists/durations are read; audio comes from YouTube.
+- A YouTube Premium login, or any workaround for YouTube's PO Token / bot checks.
 - Auto-copying files into the Music app or onto an iPod. Downloads are normal browser downloads.
 - Library management, duplicate detection, a match-review screen.
 - Links from other sites (SoundCloud, Bandcamp, …) — shows "Link not supported".
@@ -34,7 +35,7 @@ Runs on the user's own computer (macOS and Windows) at `http://127.0.0.1:8787`.
 | `ytmusicapi` without login: `search(filter="featured_playlists")` returns official playlists with `itemCount`; `filter="community_playlists"` returns user playlists; `get_playlist(id, limit=None)` returns every track with `videoId` | Live queries: official 100/100, community 150/150 (no cap) |
 | YouTube Music thumbnail URLs accept a size rewrite: `=w120-h120…` → `=w600-h600` or `=w1200-h1200` returns a square baseline JPEG | Fetched both sizes and read the JPEG header |
 | Free YouTube audio: 140 = AAC 130k `.m4a`; 251 = Opus 129k `.webm` | `yt-dlp -F` |
-| Premium audio: 141 = AAC 256k; 774 = Opus 256k; need a Premium login; reported intermittent even with valid cookies (yt-dlp #12891, #14208) | Web research. 2026-09-14 test with Kushal's Safari login: macOS blocked reading Safari cookies (Terminal lacks Full Disk Access); downloads fell back to AAC 130 / Opus 133 as designed. 256k still unverified |
+| Premium audio: 141 = AAC 256k; 774 = Opus 256k; need a Premium login; reported intermittent even with valid cookies (yt-dlp #12891, #14208) | Tested 2026-09-14. Safari cookies: blocked by macOS (Terminal lacks Full Disk Access). Brave cookies: login loaded, but the default client still offers only 140/251, and the web_music client (where 141/774 live) skips all formats because it needs a GVS PO Token. Premium adds no quality without a PO Token provider, which retro-ears does not use |
 | yt-dlp needs a JS runtime for YouTube; PyPI `deno` works as that runtime (no Node needed) | `yt-dlp --js-runtimes deno:<path> -F` succeeded |
 | `imageio-ffmpeg` bundles ffmpeg for macOS + Windows with `aac`, `libmp3lame`, `libopus` encoders | `ffmpeg -encoders` on the bundled binary |
 | All key packages require Python ≥ 3.10 | PyPI metadata |
@@ -46,11 +47,11 @@ Runs on the user's own computer (macOS and Windows) at `http://127.0.0.1:8787`.
 ## 4. The page
 
 ```
-retro-ears                                            [⚙ Premium]
+retro-ears
 ┌──────────────────────────────────────────────────┐ ┌────────┐
 │ Search songs or playlists, or paste a link…      │ │ Search │
 └──────────────────────────────────────────────────┘ └────────┘
- (● Songs) ( Playlists )                      Format: [ M4A ▾ ]
+ (● Songs) ( Playlists )                      Format: [ AAC ▾ ]
 
  ▣ Blinding Lights — The Weeknd · Blinding Lights    3:22  [↓]
  ▣ Starboy — The Weeknd · Starboy                    3:51  [↓]
@@ -64,11 +65,10 @@ retro-ears                                            [⚙ Premium]
 
 - **Search box:** plain text searches the active tab. A pasted link is recognized automatically (section 5.3).
 - **Tabs:** Songs | Playlists.
-- **Format menu:** M4A (default) | Opus | MP3 320. Remembered in `localStorage`.
+- **Format menu:** AAC (.m4a) (default) | Opus | MP3 320. Remembered in `localStorage`.
 - **Song row:** art, title, artist · album, duration, download button.
 - **Playlist row:** art, name, song count, **View** (opens the track list with a **Download all** button) and **Download all**.
 - **Progress bar** (bottom): appears while a download runs; shows `n / total` and the current song; **Cancel**. When finished the browser download starts automatically and the bar shows `98 done · 2 failed` with the failed song names and each finished song's real quality (e.g. `AAC 130`).
-- **Premium menu (⚙):** Off | Firefox | Safari | Chrome | cookies.txt file. On Windows, Chrome/Edge are disabled with a one-line explanation.
 - States: empty, loading, results, no results, error message.
 - Style: modern minimal, dark. One `index.html` with inline CSS and vanilla JS — no build step.
 
@@ -85,7 +85,6 @@ retro-ears/
   download.py       yt-dlp format choice, ffmpeg convert/remux, file naming
   tags.py           cover art fetch + baseline JPEG, tag writing (m4a/opus/mp3)
   jobs.py           in-memory download jobs (thread pool), ZIP building, cleanup
-  settings.py       Premium cookie source in a small JSON file
   static/index.html the whole UI
   tests/
   requirements.txt  fastapi, uvicorn, yt-dlp[default], ytmusicapi, mutagen, pillow, imageio-ffmpeg, deno, httpx, certifi
@@ -139,17 +138,16 @@ All HTTP fetches use `httpx` with `certifi`.
 At download time, for tracks without `video_id`:
 `search(f"{title} {artist}", filter="songs", limit=5)` → first result within ±10 s of the source duration → else first result → else the track fails with "Not found on YouTube Music".
 
-### 5.5 Downloading — `download.fetch(track, fmt, workdir, cookies) -> Result(path, quality_label)`
+### 5.5 Downloading — `download.fetch(track, fmt, workdir) -> Result(path, quality_label)`
 
-| Format | yt-dlp format string (with Premium) | Without Premium | Processing |
-|---|---|---|---|
-| M4A | `141/140/bestaudio[ext=m4a]` | `140/bestaudio[ext=m4a]` | m4a fixup, no re-encode |
-| Opus | `774/251/bestaudio[acodec=opus]` | `251/bestaudio[acodec=opus]` | remux WebM → Ogg `.opus`, no re-encode |
-| MP3 320 | `774/141/251/140/bestaudio` | `251/140/bestaudio` | ffmpeg `libmp3lame` 320k CBR |
+| Format | yt-dlp format string | Processing |
+|---|---|---|
+| AAC (.m4a) | `140/bestaudio[ext=m4a]` | m4a fixup, no re-encode |
+| Opus | `251/bestaudio[acodec=opus]` | remux WebM → Ogg `.opus`, no re-encode |
+| MP3 320 | `251/140/bestaudio` | ffmpeg `libmp3lame` 320k CBR |
 
 - yt-dlp is called as a library with `ffmpeg_location = imageio_ffmpeg.get_ffmpeg_exe()` and the `deno` binary from the virtualenv as its JS runtime.
-- Premium formats only appear in the format string when a cookie source is set. If they are unavailable, yt-dlp falls through to the free format.
-- **Quality label** comes from what yt-dlp actually selected (`acodec`, `abr`): `AAC 130`, `Opus 256`, `MP3 320 (from Opus 129)`.
+- **Quality label** comes from what yt-dlp actually selected (`acodec`, `abr`): `AAC 130`, `Opus 133`, `MP3 320 (from Opus 133)`.
 - **Tags** (mutagen): title, artist, album, cover art. M4A → MP4 atoms; Opus → Vorbis comments + `METADATA_BLOCK_PICTURE`; MP3 → ID3v2.3 `TIT2 TPE1 TALB APIC`.
 - **Art:** thumbnail URL size rewritten to `=w600-h600` (verified to return a 600 px baseline JPEG), fetched with httpx, and passed through Pillow to guarantee a baseline JPEG ≤ 600 px (Rockbox cannot decode progressive JPEG). If the fetch fails, the largest provided thumbnail is used; if that fails, no art.
 - **File name:** `Artist - Title.ext`, sanitized for Windows and macOS (strip `<>:"/\|?*` and control characters, trim trailing dots/spaces, avoid `CON`/`NUL`/`COM1`…, max 150 chars).
@@ -164,12 +162,6 @@ At download time, for tracks without `video_id`:
 - Finished jobs older than 1 hour are deleted whenever a new job starts; all job folders are deleted on app start.
 - A job with 0 successful tracks returns status `failed` and no file.
 
-### 5.7 Premium — `settings.py`
-
-- `GET/PUT /api/settings` → `{cookie_source: "off" | "firefox" | "safari" | "chrome" | "file:<path>"}`.
-- Stored at `~/Library/Application Support/retro-ears/settings.json` (macOS) or `%APPDATA%\retro-ears\settings.json` (Windows).
-- Only the source name/path is stored. Cookie values are read by yt-dlp at download time and never logged, copied, or returned by the API.
-
 ## 6. Errors
 
 | Situation | What the user sees |
@@ -180,7 +172,6 @@ At download time, for tracks without `video_id`:
 | Private or removed playlist | "This playlist is private or doesn't exist" |
 | Spotify/Apple page layout changed | "Couldn't read this playlist — the site may have changed" |
 | One song fails in a playlist | Job continues; song listed under failed with reason (age-restricted, unavailable, not found) |
-| Premium login set but formats unavailable | Download still succeeds at free quality; quality label shows the real bitrate |
 | yt-dlp broken by a YouTube change | Song fails with the yt-dlp message; README explains `run.sh --update` |
 
 ## 7. Security
@@ -188,13 +179,13 @@ At download time, for tracks without `video_id`:
 - Bind to `127.0.0.1:8787` only.
 - Reject requests whose `Host` header is not `127.0.0.1:8787` or `localhost:8787` (DNS rebinding).
 - No CORS.
-- Cookie values never stored, logged, or sent to the browser. `.gitignore` covers `cookies*.txt`, `.venv/`.
+- No logins or browser cookies are read.
 
 ## 8. Install and run
 
 - Users need Python 3.10+ only.
 - `run.sh` (macOS) / `run.ps1` (Windows): check Python version → create `.venv` if missing → `pip install -r requirements.txt` → start uvicorn → open browser. `--update` flag upgrades `yt-dlp` and `ytmusicapi`.
-- README: what it does, how to run, formats explained, Premium setup, personal-use note.
+- README: what it does, how to run, formats explained, personal-use note.
 
 ## 9. Testing
 
@@ -202,12 +193,12 @@ At download time, for tracks without `video_id`:
   - `links.classify` for every link shape and plain text.
   - Spotify embed and Apple page parsers against saved HTML.
   - `ytmusic` result mapping and `match` duration rule against saved JSON.
-  - `download` format-string choice for each format × Premium on/off; quality label; filename sanitizer.
+  - `download` format-string choice per format; quality label; filename sanitizer.
   - Tag + art round-trip on 1-second silent M4A, Opus and MP3 files generated with the bundled ffmpeg; art is baseline JPEG.
   - `jobs`: ZIP layout, partial failure, cancel, all-failed.
 - **API (FastAPI TestClient)** with services mocked: search, playlist, jobs lifecycle, Host header rejection.
 - **Live smoke (`pytest -m live`, opt-in):** search one song → download in each of the three formats → tags present.
-- **Manual (macOS):** song search download, playlist search download, each link type, Premium on/off.
+- **Manual (macOS):** song search download, playlist search download, each link type.
 - **Windows:** unit tests only from the Mac; needs one real Windows run before calling it done.
 
 ## 10. Risks
@@ -215,15 +206,14 @@ At download time, for tracks without `video_id`:
 | Risk | Mitigation |
 |---|---|
 | YouTube breaks yt-dlp | `run.sh --update`; clear per-song error |
-| Premium formats unreliable | Automatic fallback; real quality label; test with Kushal's account in phase 1 |
 | Spotify/Apple pages change | Isolated parsers with fixture tests; clear error |
 | Rockbox may not show art embedded in Opus files | Known limitation for v1; M4A works on both iPods |
 | Wrong song matched for Spotify/Apple tracks | Duration rule; the finished-song list shows what was downloaded |
 
 ## 11. Build order
 
-1. **Download core:** `download.py` (formats, convert, tags, art, naming) + tests + live smoke, including a Premium check with Kushal's account.
+1. **Download core:** `download.py` (formats, convert, tags, art, naming) + tests + live smoke.
 2. **Search and links:** `ytmusic.py`, `links.py` + tests.
-3. **Jobs and API:** `jobs.py`, `settings.py`, `app.py` + API tests.
+3. **Jobs and API:** `jobs.py`, `app.py` + API tests.
 4. **Page:** `static/index.html`.
 5. **Run scripts and docs:** `run.sh`, `run.ps1`, README, `.gitignore`.

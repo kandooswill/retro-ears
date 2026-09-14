@@ -50,9 +50,9 @@ def fake_fetch():
     """Stand-in for download.fetch that writes a tiny file instead of downloading."""
 
     def make(fail_titles=(), calls=None):
-        def fetch(track, fmt, workdir, cookie_source="off"):
+        def fetch(track, fmt, workdir):
             if calls is not None:
-                calls.append((track, fmt, cookie_source))
+                calls.append((track, fmt))
             if track.title in fail_titles:
                 raise RetroError("Unavailable on YouTube")
             path = download.unique_path(workdir, download.safe_filename(f"{track.artist} - {track.title}"), fmt)

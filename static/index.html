@@ -71,14 +71,6 @@
   details { margin-top: 10px; color: var(--muted); font-size: 13px; }
   details ul { max-height: 180px; margin: 8px 0 0; padding-left: 18px; overflow: auto; }
   .bad { color: var(--danger); }
-  dialog { width: min(420px, calc(100vw - 32px)); padding: 22px; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 14px; }
-  dialog::backdrop { background: rgba(0, 0, 0, .6); }
-  dialog h2 { margin: 0 0 6px; font-size: 18px; }
-  .field { display: grid; gap: 6px; margin-top: 16px; color: var(--muted); font-size: 14px; }
-  .field input { height: 38px; padding: 0 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
-  .help { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
-  .help.bad { color: var(--danger); }
-  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
   @media (max-width: 560px) {
     .wrap { padding-top: 28px; }
     .row { grid-template-columns: 40px minmax(0, 1fr) auto; }
@@ -92,7 +84,6 @@
 <div class="wrap">
   <header>
     <div class="brand">retro<b>·</b>ears</div>
-    <button class="btn" id="premiumBtn" type="button">Premium: Off</button>
   </header>
 
   <form class="search" id="searchForm" role="search">
@@ -138,42 +129,14 @@
   </div>
 </div>
 
-<dialog id="premiumDialog" aria-labelledby="premiumTitle">
-  <form method="dialog">
-    <h2 id="premiumTitle">YouTube Premium</h2>
-    <p class="help">Optional. Uses your own Premium login from a browser to get 256 kbps audio. Without it you still get the best free quality.</p>
-    <label class="field">Login from
-      <select id="cookieSource">
-        <option value="off">Off</option>
-        <option value="firefox">Firefox</option>
-        <option value="safari">Safari</option>
-        <option value="chrome">Chrome</option>
-        <option value="file">cookies.txt file</option>
-      </select>
-    </label>
-    <label class="field" id="cookieFileField" hidden>Path to cookies.txt
-      <input id="cookieFile" type="text" spellcheck="false">
-    </label>
-    <p class="help" id="cookieHint"></p>
-    <p class="help bad" id="premiumError" role="alert" hidden></p>
-    <div class="dialog-actions">
-      <button class="btn" value="cancel">Cancel</button>
-      <button class="btn primary" id="premiumSave" type="button">Save</button>
-    </div>
-  </form>
-</dialog>
-
 <script>
   const $ = (selector) => document.querySelector(selector);
   const els = {
     q: $("#q"), results: $("#results"), format: $("#format"),
     dock: $("#dock"), dockTitle: $("#dockTitle"), dockSub: $("#dockSub"), dockAction: $("#dockAction"),
     dockBar: $("#dockBar"), dockFill: $("#dockFill"), dockDetails: $("#dockDetails"), dockList: $("#dockList"),
-    premiumBtn: $("#premiumBtn"), premiumDialog: $("#premiumDialog"), cookieSource: $("#cookieSource"),
-    cookieFileField: $("#cookieFileField"), cookieFile: $("#cookieFile"), cookieHint: $("#cookieHint"),
-    premiumError: $("#premiumError"),
   };
-  const state = { tab: "songs", jobId: null, back: null, platform: null, seq: 0 };
+  const state = { tab: "songs", jobId: null, back: null, seq: 0 };
   const encode = encodeURIComponent;
   const isLink = (text) => /^https?:\/\//i.test(text.trim());
 
@@ -407,37 +370,6 @@
     link.remove();
   }
 
-  /* ---------- Premium ---------- */
-
-  const SOURCE_NAMES = { off: "Off", firefox: "Firefox", safari: "Safari", chrome: "Chrome", file: "cookies.txt" };
-
-  function applySettings(saved) {
-    state.platform = saved.platform;
-    const source = saved.cookie_source.startsWith("file:") ? "file" : saved.cookie_source;
-    els.cookieSource.value = source;
-    els.cookieFile.value = source === "file" ? saved.cookie_source.slice(5) : "";
-    els.cookieSource.querySelector('[value="safari"]').disabled = saved.platform !== "darwin";
-    els.cookieSource.querySelector('[value="chrome"]').disabled = saved.platform === "win32";
-    els.premiumBtn.textContent = `Premium: ${SOURCE_NAMES[source] || "Off"}`;
-    updatePremiumFields();
-  }
-
-  function updatePremiumFields() {
-    const source = els.cookieSource.value;
-    els.cookieFileField.hidden = source !== "file";
-    els.premiumError.hidden = true;
-    const hints = [];
-    if (state.platform === "win32") hints.push("Chrome and Edge logins can't be read on Windows — use Firefox or a cookies.txt file.");
-    if (source === "chrome") hints.push("macOS may ask for Keychain access the first time.");
-    if (source === "safari") hints.push("Safari needs Full Disk Access for the terminal running retro-ears.");
-    if (source === "file") hints.push("Export it from a browser where you're signed in to YouTube.");
-    els.cookieHint.textContent = hints.join(" ");
-  }
-
-  async function loadSettings() {
-    try { applySettings(await api("/api/settings")); } catch { /* keep defaults */ }
-  }
-
   /* ---------- wiring ---------- */
 
   $("#searchForm").addEventListener("submit", (event) => { event.preventDefault(); runSearch(); });
@@ -459,23 +391,6 @@
   els.format.value = readStored("format", "m4a");
   if (!els.format.value) els.format.value = "m4a";
   els.format.addEventListener("change", () => writeStored("format", els.format.value));
-
-  els.cookieSource.addEventListener("change", updatePremiumFields);
-  els.premiumBtn.addEventListener("click", () => els.premiumDialog.showModal());
-  els.premiumDialog.addEventListener("close", loadSettings);
-  $("#premiumSave").addEventListener("click", async () => {
-    const source = els.cookieSource.value;
-    const value = source === "file" ? `file:${els.cookieFile.value.trim()}` : source;
-    try {
-      applySettings(await api("/api/settings", { method: "PUT", body: JSON.stringify({ cookie_source: value }) }));
-      els.premiumDialog.close();
-    } catch (error) {
-      els.premiumError.textContent = error.message;
-      els.premiumError.hidden = false;
-    }
-  });
-
-  loadSettings();
 </script>
 </body>
 </html>

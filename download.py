@@ -17,14 +17,11 @@ from models import RetroError, Track
 
 FORMATS = ("m4a", "opus", "mp3")
 
-# (format, premium) -> yt-dlp format selector. 141 and 774 only exist with a Premium login.
+# Best free YouTube stream for each format: 140 = AAC ~130k, 251 = Opus ~130k.
 FORMAT_STRINGS = {
-    ("m4a", True): "141/140/bestaudio[ext=m4a]",
-    ("m4a", False): "140/bestaudio[ext=m4a]",
-    ("opus", True): "774/251/bestaudio[acodec=opus]",
-    ("opus", False): "251/bestaudio[acodec=opus]",
-    ("mp3", True): "774/141/251/140/bestaudio",
-    ("mp3", False): "251/140/bestaudio",
+    "m4a": "140/bestaudio[ext=m4a]",
+    "opus": "251/bestaudio[acodec=opus]",
+    "mp3": "251/140/bestaudio",
 }
 
 CODEC_NAMES = {"mp4a": "AAC", "opus": "Opus"}
@@ -55,8 +52,8 @@ class _QuietLogger:
         pass
 
 
-def format_string(fmt: str, premium: bool) -> str:
-    return FORMAT_STRINGS[(fmt, premium)]
+def format_string(fmt: str) -> str:
+    return FORMAT_STRINGS[fmt]
 
 
 def postprocessor(fmt: str) -> dict:
@@ -67,24 +64,15 @@ def postprocessor(fmt: str) -> dict:
     return pp
 
 
-def cookie_opts(cookie_source: str) -> dict:
-    if not cookie_source or cookie_source == "off":
-        return {}
-    if cookie_source.startswith("file:"):
-        return {"cookiefile": cookie_source[len("file:"):]}
-    return {"cookiesfrombrowser": (cookie_source, None, None, None)}
-
-
 def deno_path() -> str | None:
     name = "deno.exe" if sys.platform == "win32" else "deno"
     beside_python = Path(sys.executable).parent / name
     return str(beside_python) if beside_python.exists() else shutil.which("deno")
 
 
-def build_opts(fmt: str, outdir: Path, cookie_source: str) -> dict:
-    cookies = cookie_opts(cookie_source)
+def build_opts(fmt: str, outdir: Path) -> dict:
     opts = {
-        "format": format_string(fmt, premium=bool(cookies)),
+        "format": format_string(fmt),
         "outtmpl": str(outdir / "%(id)s.%(ext)s"),
         "noplaylist": True,
         "quiet": True,
@@ -93,7 +81,6 @@ def build_opts(fmt: str, outdir: Path, cookie_source: str) -> dict:
         "logger": _QuietLogger(),
         "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
         "postprocessors": [postprocessor(fmt)],
-        **cookies,
     }
     deno = deno_path()
     if deno:
@@ -130,7 +117,7 @@ def unique_path(directory: Path, stem: str, ext: str) -> Path:
 def friendly_error(message: str) -> str:
     lowered = message.lower()
     if "confirm your age" in lowered or "age-restricted" in lowered:
-        return "Age-restricted — needs a Premium login"
+        return "Age-restricted on YouTube"
     if "video unavailable" in lowered or "private video" in lowered:
         return "Unavailable on YouTube"
     if "requested format is not available" in lowered:
@@ -145,20 +132,14 @@ def _extract(opts: dict, url: str) -> dict:
         return ydl.extract_info(url, download=True)
 
 
-def _download(fmt: str, outdir: Path, url: str, cookie_source: str) -> dict:
+def _download(fmt: str, outdir: Path, url: str) -> dict:
     try:
-        return _extract(build_opts(fmt, outdir, cookie_source), url)
-    except Exception as first:
-        if not cookie_opts(cookie_source):
-            raise RetroError(friendly_error(str(first))) from first
-    # The Premium login couldn't be used; the app must still work without it.
-    try:
-        return _extract(build_opts(fmt, outdir, "off"), url)
-    except Exception as second:
-        raise RetroError(friendly_error(str(second))) from second
+        return _extract(build_opts(fmt, outdir), url)
+    except Exception as exc:
+        raise RetroError(friendly_error(str(exc))) from exc
 
 
-def fetch(track: Track, fmt: str, workdir: Path, cookie_source: str = "off") -> Result:
+def fetch(track: Track, fmt: str, workdir: Path) -> Result:
     if fmt not in FORMATS:
         raise ValueError(f"Unknown format: {fmt}")
     if not track.video_id:
@@ -167,7 +148,7 @@ def fetch(track: Track, fmt: str, workdir: Path, cookie_source: str = "off") -> 
     tmp = workdir / f".tmp-{uuid.uuid4().hex}"
     tmp.mkdir()
     try:
-        info = _download(fmt, tmp, f"https://music.youtube.com/watch?v={track.video_id}", cookie_source)
+        info = _download(fmt, tmp, f"https://music.youtube.com/watch?v={track.video_id}")
         source = Path(info["requested_downloads"][0]["filepath"])
         tags.write_tags(source, track, tags.fetch_art(track.art_url))
         with _name_lock:

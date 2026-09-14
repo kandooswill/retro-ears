@@ -72,14 +72,12 @@ class JobManager:
         root: Path = ROOT,
         fetch: Callable = download.fetch,
         match: Callable = ytmusic.match,
-        cookie_source: Callable[[], str] = lambda: "off",
         workers: int = WORKERS,
     ):
         self.root = root
         self.jobs: dict[str, Job] = {}
         self._fetch = fetch
         self._match = match
-        self._cookie_source = cookie_source
         self._workers = workers
         root.mkdir(parents=True, exist_ok=True)
 
@@ -130,21 +128,20 @@ class JobManager:
                 del self.jobs[job_id]
 
     def _run(self, job: Job) -> None:
-        cookie_source = self._cookie_source()
         with ThreadPoolExecutor(max_workers=self._workers) as pool:
-            list(pool.map(lambda track: self._one(job, track, cookie_source), job.tracks))
+            list(pool.map(lambda track: self._one(job, track), job.tracks))
         with job.lock:
             job.current = None
             job.status = "done" if job.files else "failed"
             job.finished_at = time.time()
 
-    def _one(self, job: Job, track: Track, cookie_source: str) -> None:
+    def _one(self, job: Job, track: Track) -> None:
         with job.lock:
             if job.cancelled:
                 return
             job.current = f"{track.title} — {track.artist}"
         try:
-            result = self._fetch(self._match(track), job.fmt, job.dir, cookie_source)
+            result = self._fetch(self._match(track), job.fmt, job.dir)
         except Exception as exc:  # one bad song must not stop the rest of the playlist
             with job.lock:
                 job.failed += 1
