@@ -79,9 +79,11 @@ retro-ears                                            [⚙ Premium]
 ```
 retro-ears/
   app.py            FastAPI: routes, Host check, serves static/index.html
+  models.py         Track, PlaylistInfo, user-facing error classes
   ytmusic.py        song search, playlist search, playlist tracks, song match
   links.py          classify pasted text; parse Spotify and Apple pages
-  download.py       yt-dlp format choice, ffmpeg convert/remux, tags + art, file naming
+  download.py       yt-dlp format choice, ffmpeg convert/remux, file naming
+  tags.py           cover art fetch + baseline JPEG, tag writing (m4a/opus/mp3)
   jobs.py           in-memory download jobs (thread pool), ZIP building, cleanup
   settings.py       Premium cookie source in a small JSON file
   static/index.html the whole UI
@@ -159,7 +161,7 @@ At download time, for tracks without `video_id`:
 - `GET /api/jobs/{id}` → `{status, done, failed, total, current, results: [{title, artist, quality | error}]}`. The page polls every second.
 - `GET /api/jobs/{id}/file` → the single file, or for more than one track a ZIP (`<name>/Artist - Title.ext`, `ZIP_STORED`) of the finished tracks.
 - `POST /api/jobs/{id}/cancel` → stops queued tracks; running ones finish.
-- Temp folders are deleted 1 hour after a job finishes and on app start.
+- Finished jobs older than 1 hour are deleted whenever a new job starts; all job folders are deleted on app start.
 - A job with 0 successful tracks returns status `failed` and no file.
 
 ### 5.7 Premium — `settings.py`
