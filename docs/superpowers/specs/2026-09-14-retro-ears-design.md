@@ -1,276 +1,227 @@
-# retro-ears — Design Spec
+# retro-ears — Design Spec (v2, simplified)
 
 - **Date:** 2026-09-14
-- **Status:** Design approved in brainstorming; written spec pending review
+- **Status:** v2 design approved; replaces the v1 spec (commit a243b78)
 - **Owner:** Kushal
+- **Reference:** ytmp3.gl — one input, one button, a file download. retro-ears keeps that simplicity and adds search, playlists, iPod-ready tags and honest quality choices.
 
 ## 1. Goal
 
-A local app for Mac and Windows that lets a person:
+A single local web page where a person can:
 
-1. Search for a song and download it.
-2. Paste a Spotify, Apple Music, YouTube Music or YouTube playlist link and download the whole list.
-3. Paste any other media link (YouTube video, SoundCloud, Bandcamp) and download it.
+1. Search **songs** and download one.
+2. Search **playlists**, open one, and download all of it as a ZIP.
+3. Paste a YouTube, YouTube Music, Spotify or Apple Music link (song or playlist) and download it.
 
-Every file comes out at the best quality available to that user, fully tagged (title, artist, album, track number, year, cover art), and delivered to either a stock iPod (via the Music app / iTunes sync) or a Rockbox iPod (copied straight to the device).
+Files come out at the best quality available, with title, artist, album and cover art embedded, ready to drag into the Music app (stock iPod) or onto a Rockbox iPod.
+
+Runs on the user's own computer (macOS and Windows) at `http://127.0.0.1:8787`.
 
 ## 2. Non-goals
 
-- **No public hosted service.** The app runs on the user's own computer and binds to `127.0.0.1` only.
-- **No DRM circumvention.** Spotify and Apple Music audio is never touched. Only public playlist metadata (track names, artists, durations) is read; audio comes from YouTube.
-- **No shared Premium account.** Each user may connect their own YouTube Premium login; nobody's account is used on another person's behalf.
-- **No lossless import in v1.** Importing owned FLAC/WAV files is a later phase.
-- **Linux is not a target.** It may work incidentally; it is not tested.
+- Public hosted service.
+- Touching Spotify or Apple Music audio (DRM). Only public track names/artists/durations are read; audio comes from YouTube.
+- Auto-copying files into the Music app or onto an iPod. Downloads are normal browser downloads.
+- Library management, duplicate detection, a match-review screen.
+- Links from other sites (SoundCloud, Bandcamp, …) — shows "Link not supported".
+- Lossless import. Linux as a tested target.
 
 ## 3. Verified facts (2026-09-14)
 
-These were checked during brainstorming and shape the design:
-
 | Fact | Evidence |
 |---|---|
-| yt-dlp 2026.8.19, ytmusicapi 1.12.2, mutagen 1.48.1, fastapi 0.141.1 all require Python ≥ 3.10 | PyPI metadata |
-| yt-dlp needs a JS runtime for YouTube; the PyPI `deno` package (2.9.6) works as that runtime, so end users need no Node install | Ran `yt-dlp --js-runtimes deno:<pip deno> -F` successfully on macOS arm64; `deno` ships `win_amd64` and macOS wheels |
-| `imageio-ffmpeg` 0.6.0 ships static ffmpeg for macOS (intel + arm64) and Windows | PyPI wheels |
-| Free YouTube audio: format 140 = AAC 130k `.m4a`; format 251 = Opus 129k `.webm` | `yt-dlp -F` on a live video |
-| Premium audio: format 141 = AAC 256k; format 774 = Opus 256k. Both need a Premium login. Availability has been reported as intermittent even with valid cookies (yt-dlp issues #12891, #14208) | Web research; **not yet verified with a real account** |
-| Spotify: `open.spotify.com/embed/playlist/{id}` contains `__NEXT_DATA__` JSON with `trackList` (title, `subtitle` = artists, duration ms). The embed caps at **100 tracks** | 50-track playlist → 50; 150-track playlist → 100 |
-| Apple Music: public playlist page contains an `ld+json` `MusicPlaylist` (track name, ISO duration) and `serialized-server-data` JSON (fuller data including artist, `trackCount`) | Fetched a public playlist page |
-| iTunes Search API: free, no key; returns album, track number, release date, artwork URL, duration. Ranking is not by popularity (a cover version outranked the original) | Live query |
-| Chrome/Edge cookies on Windows cannot be read by external tools (app-bound encryption, Chrome 127+). Firefox cookies and exported `cookies.txt` files still work | Web research, yt-dlp issue #15401 |
+| `ytmusicapi` without login: `search(filter="songs")` returns `videoId`, artists, album, duration, thumbnails | Live query |
+| `ytmusicapi` without login: `search(filter="featured_playlists")` returns official playlists with `itemCount`; `filter="community_playlists"` returns user playlists; `get_playlist(id, limit=None)` returns every track with `videoId` | Live queries: official 100/100, community 150/150 (no cap) |
+| YouTube Music thumbnail URLs accept a size rewrite: `=w120-h120…` → `=w600-h600` or `=w1200-h1200` returns a square baseline JPEG | Fetched both sizes and read the JPEG header |
+| Free YouTube audio: 140 = AAC 130k `.m4a`; 251 = Opus 129k `.webm` | `yt-dlp -F` |
+| Premium audio: 141 = AAC 256k; 774 = Opus 256k; need a Premium login; reported intermittent even with valid cookies (yt-dlp #12891, #14208) | Web research; not yet verified with a real account |
+| yt-dlp needs a JS runtime for YouTube; PyPI `deno` works as that runtime (no Node needed) | `yt-dlp --js-runtimes deno:<path> -F` succeeded |
+| `imageio-ffmpeg` bundles ffmpeg for macOS + Windows with `aac`, `libmp3lame`, `libopus` encoders | `ffmpeg -encoders` on the bundled binary |
+| All key packages require Python ≥ 3.10 | PyPI metadata |
+| Spotify embed page (`open.spotify.com/embed/playlist/{id}`) has `__NEXT_DATA__` → `trackList` (title, artists, duration), capped at 100 tracks | 150-track playlist returned 100 |
+| Apple Music public playlist page has `serialized-server-data` JSON (title, artist, duration) and `ld+json` fallback | Fetched page |
+| python.org Python on macOS has no CA certificates by default, so `urllib` HTTPS fails; `requests`/`httpx` with `certifi` works | `CERTIFICATE_VERIFY_FAILED` from urllib; the same URL fetched fine with requests + certifi |
+| Chrome/Edge cookies on Windows cannot be read by yt-dlp (app-bound encryption); Firefox and `cookies.txt` work | yt-dlp #15401 |
 
-## 4. Architecture
+## 4. The page
 
-Python backend (FastAPI) + React frontend (Vite + TypeScript). The backend serves the built frontend, so users only need Python.
+```
+retro-ears                                            [⚙ Premium]
+┌──────────────────────────────────────────────────┐ ┌────────┐
+│ Search songs or playlists, or paste a link…      │ │ Search │
+└──────────────────────────────────────────────────┘ └────────┘
+ (● Songs) ( Playlists )                      Format: [ M4A ▾ ]
+
+ ▣ Blinding Lights — The Weeknd · Blinding Lights    3:22  [↓]
+ ▣ Starboy — The Weeknd · Starboy                    3:51  [↓]
+
+ Playlists tab:
+ ▣ '80s Summer Grooves · 100 songs          [View] [↓ All]
+
+ ───────────────────────────────────────────────────────────────
+ Downloading 23 / 100 · Beat It — Michael Jackson      [Cancel]
+```
+
+- **Search box:** plain text searches the active tab. A pasted link is recognized automatically (section 5.3).
+- **Tabs:** Songs | Playlists.
+- **Format menu:** M4A (default) | Opus | MP3 320. Remembered in `localStorage`.
+- **Song row:** art, title, artist · album, duration, download button.
+- **Playlist row:** art, name, song count, **View** (opens the track list with a **Download all** button) and **Download all**.
+- **Progress bar** (bottom): appears while a download runs; shows `n / total` and the current song; **Cancel**. When finished the browser download starts automatically and the bar shows `98 done · 2 failed` with the failed song names and each finished song's real quality (e.g. `AAC 130`).
+- **Premium menu (⚙):** Off | Firefox | Safari | Chrome | cookies.txt file. On Windows, Chrome/Edge are disabled with a one-line explanation.
+- States: empty, loading, results, no results, error message.
+- Style: modern minimal, dark. One `index.html` with inline CSS and vanilla JS — no build step.
+
+## 5. How it works
+
+### 5.1 Files
 
 ```
 retro-ears/
-  server/
-    main.py          FastAPI app: API routes, SSE stream, static frontend
-    models.py        Track, Playlist, MatchResult, Job, JobState
-    paths.py         every OS-specific path in one place (macOS / Windows)
-    settings.py      load/save settings JSON
-    search.py        iTunes Search API → list[Track]
-    routing.py       classify pasted input: search text / playlist link / direct link
-    playlists.py     playlist link → Playlist
-    enrich.py        fill missing album / track number / year / art via iTunes
-    matcher.py       Track → best YouTube Music video, with confidence score
-    downloader.py    yt-dlp download at chosen quality, remux, progress callback
-    tagger.py        write tags + cover art (m4a and opus)
-    library.py       master library folder, safe file names, duplicate detection
-    delivery.py      Music app auto-add folder / Rockbox device copy
-    devices.py       detect Rockbox iPods and the Music auto-add folder
-    jobs.py          in-memory queue, 3 workers, state events
-    static/          built frontend (committed, so users need no Node)
-    tests/
-  web/               Vite + React + TypeScript source
-  requirements.txt
-  run.sh             macOS launcher
-  run.ps1            Windows launcher
+  app.py            FastAPI: routes, Host check, serves static/index.html
+  ytmusic.py        song search, playlist search, playlist tracks, song match
+  links.py          classify pasted text; parse Spotify and Apple pages
+  download.py       yt-dlp format choice, ffmpeg convert/remux, tags + art, file naming
+  jobs.py           in-memory download jobs (thread pool), ZIP building, cleanup
+  settings.py       Premium cookie source in a small JSON file
+  static/index.html the whole UI
+  tests/
+  requirements.txt  fastapi, uvicorn, yt-dlp[default], ytmusicapi, mutagen, pillow, imageio-ffmpeg, deno, httpx, certifi
+  run.sh / run.ps1  create .venv, install, start server, open browser
   README.md
 ```
 
-### 4.1 Data model
+### 5.2 Search
+
+- `GET /api/search?q=&type=songs` → `ytmusic.search_songs(q)` → `ytmusicapi.search(q, filter="songs", limit=20)`.
+- `GET /api/search?q=&type=playlists` → `ytmusic.search_playlists(q)` → featured playlists first, then community playlists, de-duplicated by id, max 20.
+- `GET /api/playlist?id=` → `ytmusic.get_playlist(id)` → `get_playlist(id, limit=None)`.
+
+Shared shapes:
 
 ```python
 @dataclass
 class Track:
     title: str
-    artist: str                  # primary artist display string, "A, B" for features
+    artist: str
     album: str | None
-    track_no: int | None
-    year: int | None
-    duration_ms: int | None
-    artwork_url: str | None
-    video_id: str | None = None  # set when the source already is YouTube
-    source_url: str | None = None
+    duration_s: int | None
+    art_url: str | None
+    video_id: str | None      # None for Spotify/Apple tracks until matched
 
 @dataclass
-class Playlist:
+class PlaylistInfo:
+    id: str | None
     name: str
-    cover_url: str | None
-    tracks: list[Track]
-    total: int | None            # real track count if known
-    truncated: bool              # True when more tracks exist or may exist (Spotify: exactly 100 returned)
-
-class JobState(Enum):
-    QUEUED, MATCHING, NEEDS_REVIEW, DOWNLOADING, TAGGING, DELIVERING, DONE, FAILED
+    art_url: str | None
+    count: int | None
+    tracks: list[Track]       # empty in search results
+    note: str | None          # e.g. "Spotify only shares the first 100 songs"
 ```
 
-### 4.2 Components
+### 5.3 Pasted links — `links.classify(text)`
 
-Each unit has one job and can be tested alone.
-
-**`routing.py`** — `classify(text) -> Route`
-- Spotify `open.spotify.com/(playlist|album|track)/{id}` → `SPOTIFY`
-- Apple `music.apple.com/.../(playlist|album|song)/...` → `APPLE`
-- `music.youtube.com/playlist?list=` or `youtube.com/playlist?list=` → `YOUTUBE_PLAYLIST`
-- Any other `http(s)://` URL → `DIRECT`
-- Anything else → `SEARCH`
-
-Spotify albums/tracks and Apple albums/songs use the same page-parsing approach as playlists, so they are included at near-zero cost.
-
-**`search.py`** — `search(query, limit=25) -> list[Track]`
-iTunes Search API, `entity=song`. Artwork URL rewritten from `100x100bb` to `600x600bb`. Results shown as a list so the user picks the right version.
-
-**`playlists.py`** — `load(url) -> Playlist`
-- Spotify: fetch embed page, parse `__NEXT_DATA__` → `trackList`. The embed does not expose the real track count, so `total=None`, and `truncated=True` whenever exactly 100 tracks come back.
-- Apple: fetch public page, parse `serialized-server-data` for title/artist/duration; fall back to `ld+json` for names + durations.
-- YouTube Music playlist: `ytmusicapi.get_playlist` (gives artist, album, video id).
-- YouTube playlist: yt-dlp flat extraction (video id + title); titles like "Artist - Song (Official Video)" are cleaned before enrichment.
-- Raises `PlaylistError(kind)` where kind is `PRIVATE`, `NOT_FOUND`, or `PARSE_CHANGED`.
-
-**`enrich.py`** — `enrich(track) -> Track`
-For tracks missing album/track number/year/art: iTunes lookup on `"{artist} {title}"`. Accept the first result whose normalized title and artist match and whose duration is within ±7 s. Otherwise keep what we have and use the YouTube thumbnail as art.
-
-**`matcher.py`** — `match(track) -> MatchResult(video_id, score, candidates)`
-- Skipped when `track.video_id` is already set.
-- `ytmusicapi.search(f"{artist} {title}", filter="songs")`, top 10.
-- Score per candidate (0–1): title similarity × 0.5 + artist similarity × 0.3 + duration score × 0.2 (full at ≤ 7 s difference, linear to 0 at 20 s).
-- Penalty −0.3 when the candidate title contains `live`, `remix`, `cover`, `karaoke`, `sped up`, `slowed`, `instrumental` and the requested title does not.
-- `score ≥ 0.75` → auto-accept. Below → job goes to `NEEDS_REVIEW` with the top 3 candidates.
-
-**`downloader.py`** — `download(video_id, profile, quality, workdir, on_progress) -> DownloadResult(path, codec, bitrate_kbps)`
-
-Format selection:
-
-| Quality | Profile | yt-dlp format string | Output |
-|---|---|---|---|
-| Best | stock | `141/140/bestaudio[ext=m4a]` | `.m4a` (FFmpeg m4a fixup, no re-encode) |
-| Best | rockbox | `774/251/bestaudio` | Opus remuxed from WebM to Ogg `.opus` (stream copy, no re-encode); `.m4a` if an AAC stream won |
-| Standard | either | `140/bestaudio[ext=m4a]` | `.m4a` |
-
-- Premium format ids (141, 774) are only included when a cookie source is configured; without one the strings are `140/bestaudio[ext=m4a]` (stock) and `251/bestaudio` (rockbox). If Premium formats are missing, yt-dlp falls through to the free format automatically; the result's real codec and bitrate are reported, never assumed.
-- JS runtime: the `deno` binary from the app's virtualenv, passed via `js_runtimes`.
-- ffmpeg: `imageio_ffmpeg.get_ffmpeg_exe()`, passed via `ffmpeg_location`.
-- Cookie source (from settings): `none` | `browser:<firefox|safari|chrome|...>` | `file:<path to cookies.txt>`.
-
-**`tagger.py`** — `tag(path, track, art_jpeg: bytes | None)`
-- `.m4a`: MP4 atoms `©nam ©ART ©alb trkn ©day covr`.
-- `.opus`: Vorbis comments + `METADATA_BLOCK_PICTURE`.
-- Art is fetched once, resized to max 600 px, and re-saved as **baseline** JPEG with Pillow (Rockbox cannot decode progressive JPEG).
-
-**`library.py`**
-- Master copy: `<Music>/retro-ears/<Artist>/<Album>/<NN> <Title>.<ext>` (`<Music>` from `paths.py`).
-- File names sanitized for both OSes: strip `<>:"/\|?*` and control chars, trim trailing dots/spaces, avoid reserved names (`CON`, `NUL`, `COM1`…), cap each segment at 120 chars.
-- Duplicate key: normalized `artist + title + album` + extension. If a file for that key already exists at equal or higher bitrate, the download is skipped and only delivery runs.
-- Stock delivery needs `.m4a`. If the library only holds `.opus` for a track, a `.m4a` is downloaded for it.
-
-**`devices.py`**
-- `find_rockbox() -> list[Device(mount, name, free_bytes)]`
-  - macOS: `/Volumes/*` containing `.rockbox/`.
-  - Windows: drive letters `D:`–`Z:` containing `\.rockbox\`.
-- `find_music_autoadd() -> Path | None`
-  - macOS: `~/Music/Music/Media.localized/Automatically Add to Music.localized` (also the non-`.localized` spelling).
-  - Windows: `%USERPROFILE%\Music\iTunes\iTunes Media\Automatically Add to iTunes`, then a search under `%USERPROFILE%\Music` for a folder named `Automatically Add to*` (covers the Apple Music app, whose exact path is not verified).
-  - `settings.music_folder_override` wins when set.
-
-**`delivery.py`** — `deliver(library_file, destination) -> Path`
-- `music_app`: copy into the auto-add folder. The Music app / iTunes imports it; the user syncs with Finder (macOS) or Apple Devices / iTunes (Windows).
-- `rockbox`: copy to `<device>/Music/<Artist>/<Album>/`, and write `cover.jpg` in that album folder (reliable album art on Rockbox regardless of codec). Check free space first.
-- Copy, never move — the library keeps the master.
-
-**`jobs.py`**
-- In-memory `asyncio` queue, 3 concurrent workers.
-- Flow: `QUEUED → MATCHING → (NEEDS_REVIEW) → DOWNLOADING(pct) → TAGGING → DELIVERING → DONE | FAILED(reason)`.
-- Each state change is pushed to the browser over Server-Sent Events.
-- Jobs do not survive an app restart in v1. Library duplicate detection makes re-queueing cheap.
-
-**`settings.py`**
-- macOS: `~/Library/Application Support/retro-ears/settings.json`
-- Windows: `%APPDATA%\retro-ears\settings.json`
-- Fields: `destination` (`music_app` | `rockbox`), `quality` (`best` | `standard`, default `best`), `cookie_source`, `music_folder_override`, `library_root`.
-
-### 4.3 API
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/search?q=` | Search results |
-| POST | `/api/resolve` `{text}` | Classify input; returns search results, a Playlist, or a direct-link Track |
-| POST | `/api/jobs` `{tracks: Track[]}` | Queue downloads; returns job ids |
-| POST | `/api/jobs/{id}/choose` `{video_id}` | Pick a candidate for a `NEEDS_REVIEW` job |
-| POST | `/api/jobs/{id}/retry` | Retry a failed job |
-| POST | `/api/jobs/{id}/redeliver` | Copy a finished file to the destination again |
-| GET | `/api/events` | SSE stream of job updates |
-| GET / PUT | `/api/settings` | Read / update settings |
-| GET | `/api/devices` | Detected Rockbox devices + Music auto-add folder |
-| POST | `/api/ytdlp/update` | `pip install -U yt-dlp yt-dlp-ejs` inside the app's virtualenv, waits for active downloads to finish, then asks the user to restart the app |
-
-## 5. Interface
-
-Modern minimal, dark. Single page.
-
-- **Header:** app name, destination switch (**Music app** / **Rockbox iPod** — the Rockbox option is disabled with a hint when no device is detected), settings button.
-- **Input bar:** one field. Text → search results. Playlist link → playlist view. Other link → single-track confirm row.
-- **Search results:** rows with 48 px art, title, artist · album · year, duration, Download button.
-- **Playlist view:** cover, name, track count, and a notice when truncated ("Spotify only shares the first 100 songs — this playlist may have more"). Track list with checkboxes (all checked) and a **Download selected** button.
-- **Queue panel:** one row per job with state and progress bar. Finished rows show the real quality badge (e.g. `AAC 256`, `Opus 129`). Clicking a row shows the matched YouTube source. `NEEDS_REVIEW` rows expand to show 3 candidates to pick from. Failed rows show the reason and **Retry**. Delivery failures show **Copy again**.
-- **Settings sheet:** quality (Best / Standard), YouTube Premium login source (None / browser / cookies.txt file, with the Windows Chrome/Edge limitation explained), Music folder override, library location, **Update yt-dlp** button.
-
-Components: `InputBar`, `SearchResults`, `PlaylistView`, `QueuePanel`, `QueueRow`, `CandidatePicker`, `DestinationSwitch`, `SettingsSheet`. State from one SSE subscription plus a small store.
-
-## 6. Error handling
-
-| Situation | Behavior |
+| Input | Result |
 |---|---|
-| Match score below threshold | `NEEDS_REVIEW` with top 3 candidates; never download a guess |
-| yt-dlp failure (age-restricted, region-blocked, removed, YouTube change) | `FAILED` with a human-readable reason + Retry; Settings offers **Update yt-dlp** |
-| Premium formats unavailable or login expired | Silent fallback to free format; badge shows real quality; Settings shows a "Premium login not working" notice after 3 consecutive fallbacks |
-| Playlist private / not found / page layout changed | Clear message naming which of the three |
-| Spotify playlist over 100 songs | Import the first 100 and show the truncation notice |
-| Rockbox iPod unplugged mid-copy or out of space | File stays in the library; delivery `FAILED` with reason + **Copy again** |
-| Music auto-add folder not found | Prompt: open the Music app / iTunes once, or choose the folder in Settings |
-| Network offline | Search and jobs fail fast with "No internet connection" |
-| Windows + Chrome/Edge chosen as cookie source | Blocked in Settings with the explanation and the Firefox / cookies.txt alternatives |
+| `youtube.com/watch?v=`, `youtu.be/`, `music.youtube.com/watch?v=` without `list=` | Single track (`ytmusicapi.get_song` for title/artist/art) |
+| Any YouTube / YouTube Music URL with `list=` | Playlist via `get_playlist` |
+| `open.spotify.com/playlist/…` or `/album/…` | Parse embed page → tracks (no `video_id`); if exactly 100 tracks, `note` = cap warning |
+| `music.apple.com/…/playlist/…` or `/album/…` | Parse public page → tracks (no `video_id`) |
+| Other URL | Error "Link not supported" |
+| Plain text | Search |
+
+All HTTP fetches use `httpx` with `certifi`.
+
+### 5.4 Matching Spotify / Apple tracks — `ytmusic.match(track)`
+
+At download time, for tracks without `video_id`:
+`search(f"{title} {artist}", filter="songs", limit=5)` → first result within ±10 s of the source duration → else first result → else the track fails with "Not found on YouTube Music".
+
+### 5.5 Downloading — `download.fetch(track, fmt, workdir, cookies) -> Result(path, quality_label)`
+
+| Format | yt-dlp format string (with Premium) | Without Premium | Processing |
+|---|---|---|---|
+| M4A | `141/140/bestaudio[ext=m4a]` | `140/bestaudio[ext=m4a]` | m4a fixup, no re-encode |
+| Opus | `774/251/bestaudio[acodec=opus]` | `251/bestaudio[acodec=opus]` | remux WebM → Ogg `.opus`, no re-encode |
+| MP3 320 | `774/141/251/140/bestaudio` | `251/140/bestaudio` | ffmpeg `libmp3lame` 320k CBR |
+
+- yt-dlp is called as a library with `ffmpeg_location = imageio_ffmpeg.get_ffmpeg_exe()` and the `deno` binary from the virtualenv as its JS runtime.
+- Premium formats only appear in the format string when a cookie source is set. If they are unavailable, yt-dlp falls through to the free format.
+- **Quality label** comes from what yt-dlp actually selected (`acodec`, `abr`): `AAC 130`, `Opus 256`, `MP3 320 (from Opus 129)`.
+- **Tags** (mutagen): title, artist, album, cover art. M4A → MP4 atoms; Opus → Vorbis comments + `METADATA_BLOCK_PICTURE`; MP3 → ID3v2.3 `TIT2 TPE1 TALB APIC`.
+- **Art:** thumbnail URL size rewritten to `=w600-h600` (verified to return a 600 px baseline JPEG), fetched with httpx, and passed through Pillow to guarantee a baseline JPEG ≤ 600 px (Rockbox cannot decode progressive JPEG). If the fetch fails, the largest provided thumbnail is used; if that fails, no art.
+- **File name:** `Artist - Title.ext`, sanitized for Windows and macOS (strip `<>:"/\|?*` and control characters, trim trailing dots/spaces, avoid `CON`/`NUL`/`COM1`…, max 150 chars).
+
+### 5.6 Jobs — `jobs.py`
+
+- `POST /api/jobs {tracks, format, name}` → `{id}`. Used for both single songs and playlists.
+- Each job runs its tracks on a 3-worker thread pool in a temp folder.
+- `GET /api/jobs/{id}` → `{status, done, failed, total, current, results: [{title, artist, quality | error}]}`. The page polls every second.
+- `GET /api/jobs/{id}/file` → the single file, or for more than one track a ZIP (`<name>/Artist - Title.ext`, `ZIP_STORED`) of the finished tracks.
+- `POST /api/jobs/{id}/cancel` → stops queued tracks; running ones finish.
+- Temp folders are deleted 1 hour after a job finishes and on app start.
+- A job with 0 successful tracks returns status `failed` and no file.
+
+### 5.7 Premium — `settings.py`
+
+- `GET/PUT /api/settings` → `{cookie_source: "off" | "firefox" | "safari" | "chrome" | "file:<path>"}`.
+- Stored at `~/Library/Application Support/retro-ears/settings.json` (macOS) or `%APPDATA%\retro-ears\settings.json` (Windows).
+- Only the source name/path is stored. Cookie values are read by yt-dlp at download time and never logged, copied, or returned by the API.
+
+## 6. Errors
+
+| Situation | What the user sees |
+|---|---|
+| Search fails / offline | "Couldn't reach YouTube Music. Check your connection." |
+| No results | "No songs found" / "No playlists found" |
+| Link not supported | "Link not supported — paste a YouTube, YouTube Music, Spotify or Apple Music link" |
+| Private or removed playlist | "This playlist is private or doesn't exist" |
+| Spotify/Apple page layout changed | "Couldn't read this playlist — the site may have changed" |
+| One song fails in a playlist | Job continues; song listed under failed with reason (age-restricted, unavailable, not found) |
+| Premium login set but formats unavailable | Download still succeeds at free quality; quality label shows the real bitrate |
+| yt-dlp broken by a YouTube change | Song fails with the yt-dlp message; README explains `run.sh --update` |
 
 ## 7. Security
 
-- Server binds to `127.0.0.1:8787` only; never `0.0.0.0`.
-- Requests whose `Host` header is not `127.0.0.1:8787` or `localhost:8787` are rejected (blocks DNS-rebinding attacks from web pages).
-- No CORS for other origins.
-- Browser cookies are read by yt-dlp at download time and never copied into the library, the repo, logs, or settings. Settings store only the cookie *source* (browser name or file path).
-- Logs redact cookie values and `cookies.txt` contents.
-- `.gitignore` excludes `*.cookies.txt`, `cookies*.txt`, `.venv/`, settings files.
+- Bind to `127.0.0.1:8787` only.
+- Reject requests whose `Host` header is not `127.0.0.1:8787` or `localhost:8787` (DNS rebinding).
+- No CORS.
+- Cookie values never stored, logged, or sent to the browser. `.gitignore` covers `cookies*.txt`, `.venv/`.
 
 ## 8. Install and run
 
-- **Requirement for users:** Python 3.10+. Nothing else (ffmpeg and deno come from pip; the frontend is prebuilt in `server/static/`).
-- `run.sh` (macOS) / `run.ps1` (Windows):
-  1. Check Python ≥ 3.10; print install instructions if missing.
-  2. Create `.venv` if absent; `pip install -r requirements.txt`.
-  3. Start uvicorn on `127.0.0.1:8787`.
-  4. Open the default browser.
-- **Developers** rebuild the frontend with `npm run build` in `web/`, which outputs to `server/static/`.
-- `README.md` states the app is for personal use and that users are responsible for what they download.
+- Users need Python 3.10+ only.
+- `run.sh` (macOS) / `run.ps1` (Windows): check Python version → create `.venv` if missing → `pip install -r requirements.txt` → start uvicorn → open browser. `--update` flag upgrades `yt-dlp` and `ytmusicapi`.
+- README: what it does, how to run, formats explained, Premium setup, personal-use note.
 
 ## 9. Testing
 
-- **Unit tests (pytest), offline, with saved fixtures:**
-  - `routing` — every supported link shape + plain text.
-  - `playlists` — Spotify embed HTML (normal + 100-cap), Apple page HTML, ytmusicapi playlist JSON, yt-dlp flat playlist JSON.
-  - `enrich` / `matcher` — scoring, penalties, threshold, duration tolerance, using saved iTunes / ytmusicapi JSON.
-  - `tagger` — write then read back tags and art on 1-second silent `.m4a` and `.opus` files generated with the bundled ffmpeg; art is baseline JPEG.
-  - `library` — sanitizing (Windows reserved names/chars), duplicate detection, bitrate comparison.
-  - `paths` / `devices` — macOS and Windows branches with the platform and filesystem mocked.
-  - `downloader` — format string chosen for each quality × profile × cookie combination.
-- **Live smoke test (`pytest -m live`, opt-in):** search → match → download a short track → tag → deliver to a temp folder.
-- **Manual checklist (macOS):** search download; Spotify, Apple Music, YouTube Music and YouTube playlist imports; Music app delivery + Finder sync; Rockbox delivery; Premium login on/off and the quality badge.
-- **Windows:** cannot be verified from the development Mac. Unit tests cover Windows paths via mocks; a GitHub Actions `windows-latest` job runs the unit suite once the repo has a remote. A real Windows click-through is needed before calling Windows done.
+- **Unit (pytest, offline, fixtures):**
+  - `links.classify` for every link shape and plain text.
+  - Spotify embed and Apple page parsers against saved HTML.
+  - `ytmusic` result mapping and `match` duration rule against saved JSON.
+  - `download` format-string choice for each format × Premium on/off; quality label; filename sanitizer.
+  - Tag + art round-trip on 1-second silent M4A, Opus and MP3 files generated with the bundled ffmpeg; art is baseline JPEG.
+  - `jobs`: ZIP layout, partial failure, cancel, all-failed.
+- **API (FastAPI TestClient)** with services mocked: search, playlist, jobs lifecycle, Host header rejection.
+- **Live smoke (`pytest -m live`, opt-in):** search one song → download in each of the three formats → tags present.
+- **Manual (macOS):** song search download, playlist search download, each link type, Premium on/off.
+- **Windows:** unit tests only from the Mac; needs one real Windows run before calling it done.
 
 ## 10. Risks
 
 | Risk | Mitigation |
 |---|---|
-| YouTube changes break yt-dlp | In-app **Update yt-dlp** button; pinned minimum version in requirements |
-| Premium formats 141/774 unreliable | Automatic fallback; real quality always shown; verify with Kushal's account early |
-| Spotify / Apple page structure changes | Parsers isolated in `playlists.py` with fixture tests; clear `PARSE_CHANGED` error |
-| Rockbox does not show art embedded in Opus | `cover.jpg` in every album folder; verify on device |
-| Windows Apple Music auto-add path differs from our guess | Folder search + manual override in Settings |
-| Wrong song matched | Confidence threshold + review step + visible source link |
+| YouTube breaks yt-dlp | `run.sh --update`; clear per-song error |
+| Premium formats unreliable | Automatic fallback; real quality label; test with Kushal's account in phase 1 |
+| Spotify/Apple pages change | Isolated parsers with fixture tests; clear error |
+| Rockbox may not show art embedded in Opus files | Known limitation for v1; M4A works on both iPods |
+| Wrong song matched for Spotify/Apple tracks | Duration rule; the finished-song list shows what was downloaded |
 
-## 11. Build phases
+## 11. Build order
 
-1. **Core pipeline:** models, paths, settings, search, enrich, matcher, downloader, tagger, library + unit tests + live smoke test.
-2. **Playlists and jobs:** routing, playlists, jobs queue, FastAPI routes, SSE, localhost-only binding + Host header check.
-3. **Frontend:** Vite + React UI, built into `server/static/`.
-4. **Delivery and Premium:** devices, delivery (Music app + Rockbox), cookie source setting, quality badge, log redaction.
-5. **Windows and packaging:** Windows paths, `run.ps1`, `run.sh`, README, CI workflow.
+1. **Download core:** `download.py` (formats, convert, tags, art, naming) + tests + live smoke, including a Premium check with Kushal's account.
+2. **Search and links:** `ytmusic.py`, `links.py` + tests.
+3. **Jobs and API:** `jobs.py`, `settings.py`, `app.py` + API tests.
+4. **Page:** `static/index.html`.
+5. **Run scripts and docs:** `run.sh`, `run.ps1`, README, `.gitignore`.
