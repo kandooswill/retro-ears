@@ -34,7 +34,7 @@ Runs on the user's own computer (macOS and Windows) at `http://127.0.0.1:8787`.
 | `ytmusicapi` without login: `search(filter="featured_playlists")` returns official playlists with `itemCount`; `filter="community_playlists"` returns user playlists; `get_playlist(id, limit=None)` returns every track with `videoId` | Live queries: official 100/100, community 150/150 (no cap) |
 | YouTube Music thumbnail URLs accept a size rewrite: `=w120-h120…` → `=w600-h600` or `=w1200-h1200` returns a square baseline JPEG | Fetched both sizes and read the JPEG header |
 | Free YouTube audio: 140 = AAC 130k `.m4a`; 251 = Opus 129k `.webm` | `yt-dlp -F` |
-| Premium audio: 141 = AAC 256k; 774 = Opus 256k; need a Premium login; reported intermittent even with valid cookies (yt-dlp #12891, #14208) | Web research; not yet verified with a real account |
+| Premium audio: 141 = AAC 256k; 774 = Opus 256k; need a Premium login; reported intermittent even with valid cookies (yt-dlp #12891, #14208) | Web research. 2026-09-14 test with Kushal's Safari login: macOS blocked reading Safari cookies (Terminal lacks Full Disk Access); downloads fell back to AAC 130 / Opus 133 as designed. 256k still unverified |
 | yt-dlp needs a JS runtime for YouTube; PyPI `deno` works as that runtime (no Node needed) | `yt-dlp --js-runtimes deno:<path> -F` succeeded |
 | `imageio-ffmpeg` bundles ffmpeg for macOS + Windows with `aac`, `libmp3lame`, `libopus` encoders | `ffmpeg -encoders` on the bundled binary |
 | All key packages require Python ≥ 3.10 | PyPI metadata |
