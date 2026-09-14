@@ -6,6 +6,7 @@ import mutagen
 import pytest
 
 import download
+import links
 import ytmusic
 from models import Track
 
@@ -50,3 +51,15 @@ def test_search_and_open_playlist_live():
 def test_match_live():
     matched = ytmusic.match(Track(title="Blinding Lights", artist="The Weeknd", duration_s=200))
     assert matched.video_id
+
+
+def test_spotify_playlist_live():
+    result = links.resolve("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M", "songs")
+    playlist = result["playlist"]
+    assert playlist.tracks and all(track.title and track.artist for track in playlist.tracks)
+
+
+def test_apple_playlist_live():
+    result = links.resolve("https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd41149aaacabb233eb5eb", "songs")
+    playlist = result["playlist"]
+    assert playlist.tracks and all(track.artist != "Unknown Artist" for track in playlist.tracks)
