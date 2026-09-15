@@ -68,3 +68,11 @@ def test_line_endings_are_pinned():
 
 def test_windows_launcher_is_ascii():
     (ROOT / "Start retro-ears.bat").read_bytes().decode("ascii")
+
+
+def test_readme_screenshots_exist():
+    readme = (ROOT / "README.md").read_text("utf-8")
+    images = re.findall(r"\((docs/images/[^)]+\.png)\)", readme)
+    assert images, "README should show screenshots"
+    assert all((ROOT / image).is_file() for image in images)
+    assert "## Quick start" in readme
