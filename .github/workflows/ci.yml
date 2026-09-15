@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.1.0
+      - run: uv sync --frozen
+      - run: uv run pytest -v
+
+  launcher-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.1.0
+      - name: Start the macOS launcher
+        if: runner.os == 'macOS'
+        run: RETRO_NO_PAUSE=1 nohup bash "Start retro-ears.command" --no-browser > launcher.log 2>&1 &
+      - name: Start the Windows launcher
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:RETRO_NO_PAUSE = "1"
+          Start-Process -FilePath cmd.exe -ArgumentList '/c', '""Start retro-ears.bat" --no-browser > launcher.log 2>&1"' -WindowStyle Hidden
+      - name: Wait for retro-ears to answer
+        shell: bash
+        run: |
+          for attempt in $(seq 1 180); do
+            if curl -fsS http://127.0.0.1:8787/api/version; then exit 0; fi
+            sleep 1
+          done
+          cat launcher.log
+          exit 1

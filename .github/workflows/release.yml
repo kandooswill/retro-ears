@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.1.0
+      - name: Tag must match VERSION
+        run: test "$GITHUB_REF_NAME" = "v$(tr -d '[:space:]' < VERSION)"
+      - run: uv sync --frozen
+      - run: uv run pytest
+      - run: uv run python scripts/build_release.py --platform mac --out dist
+      - run: uv run python scripts/build_release.py --platform windows --out dist
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" dist/retro-ears-mac.zip dist/retro-ears-windows.zip
+          --title "retro-ears $GITHUB_REF_NAME"
+          --notes "Download the zip for your computer, unzip it, and double-click the Start file. Step-by-step guide: https://github.com/kandooswill/retro-ears#quick-start"
