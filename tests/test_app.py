@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 import app as app_module
 import jobs
+from devices import Device
 from models import NotFound, NotSupported, Offline, PlaylistInfo, Track
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,7 +26,7 @@ class FakeChecker:
 
 def build_app(tmp_path, fake_fetch, manager=None, **overrides):
     manager = manager or jobs.JobManager(root=tmp_path / "jobs", fetch=fake_fetch(), match=lambda track: track)
-    options = {"checker": FakeChecker(), "restart": lambda: None, **overrides}
+    options = {"checker": FakeChecker(), "restart": lambda: None, "find_devices": lambda: [], **overrides}
     return app_module.create_app(manager=manager, **options)
 
 
@@ -160,6 +161,7 @@ def test_index_page(client):
     assert 'id="searchForm"' in response.text
     assert "Premium" not in response.text
     assert 'id="updateBtn"' in response.text
+    assert 'id="destination"' in response.text
 
 
 def free_port():
@@ -282,3 +284,27 @@ def test_update_failure_keeps_running(tmp_path, fake_fetch, monkeypatch):
     assert response.status_code == 502
     assert response.json() == {"error": "Update failed — check your internet connection"}
     assert restarts == []
+
+
+def test_devices_route(tmp_path, fake_fetch):
+    device = Device(id="/Volumes/IPOD", name="IPOD", mount=Path("/Volumes/IPOD"), free_bytes=123)
+    client = local_client(build_app(tmp_path, fake_fetch, find_devices=lambda: [device]))
+    assert client.get("/api/devices").json() == [{"id": "/Volumes/IPOD", "name": "IPOD", "free_bytes": 123}]
+
+
+def test_job_to_a_missing_ipod_is_rejected(client):
+    response = client.post("/api/jobs", json={"tracks": [{"title": "a", "artist": "b", "video_id": "v"}], "destination": "/Volumes/NOPE"})
+    assert response.status_code == 400
+    assert response.json() == {"error": "iPod not found — plug it in and try again"}
+
+
+def test_job_to_a_detected_ipod(tmp_path, fake_fetch):
+    device = Device(id=str(tmp_path / "IPOD"), name="IPOD", mount=tmp_path / "IPOD", free_bytes=10**9)
+    manager = jobs.JobManager(root=tmp_path / "jobs", fetch=fake_fetch(), match=lambda track: track, copy=lambda *args: "Saved to iPod")
+    client = local_client(build_app(tmp_path, fake_fetch, manager=manager, find_devices=lambda: [device]))
+    job_id = client.post("/api/jobs", json={"tracks": [{"title": "a", "artist": "b", "video_id": "v"}], "destination": device.id}).json()["id"]
+    status = wait_for(client, job_id)
+    assert (status["destination_name"], status["results"][0]["saved"]) == ("IPOD", "Saved to iPod")
+    response = client.get(f"/api/jobs/{job_id}/file")
+    assert response.status_code == 400
+    assert response.json() == {"error": "These songs were saved to your iPod"}

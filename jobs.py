@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Callable
 
 import download
+import ipod
 import ytmusic
+from devices import Device
 from models import NotFound, RetroError, Track
 
 ROOT = Path(tempfile.gettempdir()) / "retro-ears-jobs"
@@ -36,6 +38,7 @@ class Job:
     results: list[dict] = field(default_factory=list)
     files: list[Path] = field(default_factory=list)
     finished_at: float | None = None
+    destination: Device | None = None
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def public(self) -> dict:
@@ -49,6 +52,7 @@ class Job:
                 "total": len(self.tracks),
                 "current": self.current,
                 "cancelled": self.cancelled,
+                "destination_name": self.destination.name if self.destination else "Downloads",
                 "results": list(self.results),
             }
 
@@ -73,22 +77,24 @@ class JobManager:
         fetch: Callable = download.fetch,
         match: Callable = ytmusic.match,
         workers: int = WORKERS,
+        copy: Callable = ipod.copy_to_ipod,
     ):
         self.root = root
         self.jobs: dict[str, Job] = {}
         self._fetch = fetch
         self._match = match
         self._workers = workers
+        self._copy = copy
         root.mkdir(parents=True, exist_ok=True)
 
-    def start(self, tracks: list[Track], fmt: str, name: str) -> Job:
+    def start(self, tracks: list[Track], fmt: str, name: str, destination: Device | None = None) -> Job:
         if not tracks:
             raise ValueError("No songs to download")
         if fmt not in download.FORMATS:
             raise ValueError(f"Unknown format: {fmt}")
         self.cleanup()
         job_id = uuid.uuid4().hex[:12]
-        job = Job(id=job_id, name=name.strip() or "retro-ears", fmt=fmt, tracks=list(tracks), dir=self.root / job_id)
+        job = Job(id=job_id, name=name.strip() or "retro-ears", fmt=fmt, tracks=list(tracks), dir=self.root / job_id, destination=destination)
         job.dir.mkdir(parents=True)
         self.jobs[job_id] = job
         threading.Thread(target=self._run, args=(job,), daemon=True).start()
@@ -113,6 +119,8 @@ class JobManager:
         with job.lock:
             if job.status == "running":
                 raise RetroError("Still downloading")
+            if job.destination:
+                raise RetroError("These songs were saved to your iPod")
             if not job.files:
                 raise RetroError("Nothing was downloaded")
             if len(job.tracks) == 1:
@@ -144,13 +152,18 @@ class JobManager:
                 return
             job.current = f"{track.title} — {track.artist}"
         try:
-            result = self._fetch(self._match(track), job.fmt, job.dir)
+            matched = self._match(track)
+            result = self._fetch(matched, job.fmt, job.dir)
+            saved = self._copy(result.path, matched, result.art, job.destination.mount) if job.destination else None
         except Exception as exc:  # one bad song must not stop the rest of the playlist
             with job.lock:
                 job.failed += 1
                 job.results.append({"title": track.title, "artist": track.artist, "error": (str(exc) or type(exc).__name__)[:200]})
             return
+        entry = {"title": track.title, "artist": track.artist, "quality": result.quality}
+        if saved:
+            entry["saved"] = saved
         with job.lock:
             job.done += 1
             job.files.append(result.path)
-            job.results.append({"title": track.title, "artist": track.artist, "quality": result.quality})
+            job.results.append(entry)

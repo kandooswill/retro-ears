@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
 
+import devices
 import jobs
 import links
 import updates
@@ -39,6 +40,7 @@ class JobIn(BaseModel):
     tracks: list[TrackIn] = Field(min_length=1, max_length=1000)
     format: Literal["m4a", "opus", "mp3"] = "m4a"
     name: str = Field(default="retro-ears", max_length=200)
+    destination: str = Field(default="download", max_length=500)
 
 
 def _status_for(error: RetroError) -> int:
@@ -49,11 +51,12 @@ def _status_for(error: RetroError) -> int:
     return 400
 
 
-def create_app(manager: jobs.JobManager | None = None, checker=None, restart=None) -> FastAPI:
+def create_app(manager: jobs.JobManager | None = None, checker=None, restart=None, find_devices=None) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     manager = manager or jobs.JobManager()
     checker = checker or updates.ReleaseChecker()
     restart = restart or updates.schedule_restart
+    find_devices = find_devices or devices.find_rockbox
 
     @app.middleware("http")
     async def only_local_host(request: Request, call_next):
@@ -86,8 +89,14 @@ def create_app(manager: jobs.JobManager | None = None, checker=None, restart=Non
 
     @app.post("/api/jobs")
     def start_job(body: JobIn):
+        destination = None
+        if body.destination != "download":
+            # Only a Rockbox iPod we can see right now, never an arbitrary path from the request.
+            destination = next((device for device in find_devices() if device.id == body.destination), None)
+            if destination is None:
+                raise HTTPException(400, "iPod not found — plug it in and try again")
         try:
-            job = manager.start([Track(**track.model_dump()) for track in body.tracks], body.format, body.name)
+            job = manager.start([Track(**track.model_dump()) for track in body.tracks], body.format, body.name, destination=destination)
         except ValueError as error:
             raise HTTPException(400, str(error)) from error
         return {"id": job.id}
@@ -120,6 +129,10 @@ def create_app(manager: jobs.JobManager | None = None, checker=None, restart=Non
             raise HTTPException(502, "Update failed — check your internet connection")
         restart()
         return {"ok": True, "restarting": True}
+
+    @app.get("/api/devices")
+    def list_devices():
+        return [device.public() for device in find_devices()]
 
     return app
 

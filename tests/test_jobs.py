@@ -4,6 +4,7 @@ import zipfile
 import pytest
 
 import jobs
+from devices import Device
 from models import NotFound, RetroError, Track
 
 TRACKS = [Track(title=f"Song {i}", artist="Artist", video_id=f"vid{i}") for i in range(3)]
@@ -167,3 +168,42 @@ def test_busy_while_a_job_runs(tmp_path, fake_fetch, wait_job):
     release.set()
     wait_job(manager, job.id)
     assert manager.busy() is False
+
+
+def ipod_device(tmp_path):
+    return Device(id=str(tmp_path / "IPOD"), name="IPOD", mount=tmp_path / "IPOD", free_bytes=10**9)
+
+
+def test_ipod_job_copies_each_song_and_offers_no_file(tmp_path, fake_fetch, wait_job):
+    copies = []
+
+    def fake_copy(file, track, art, mount):
+        copies.append((track.title, mount))
+        return "Saved to iPod"
+
+    device = ipod_device(tmp_path)
+    manager = jobs.JobManager(root=tmp_path / "jobs", fetch=fake_fetch(), match=lambda track: track, copy=fake_copy)
+    job = manager.start(TRACKS[:2], "m4a", "Mix", destination=device)
+    status = wait_job(manager, job.id)
+    assert status["destination_name"] == "IPOD"
+    assert [r["saved"] for r in status["results"]] == ["Saved to iPod", "Saved to iPod"]
+    assert sorted(copies) == [("Song 0", device.mount), ("Song 1", device.mount)]
+    with pytest.raises(RetroError, match="These songs were saved to your iPod"):
+        manager.file(job.id)
+
+
+def test_ipod_copy_errors_count_as_failures(tmp_path, fake_fetch, wait_job):
+    def full(file, track, art, mount):
+        raise RetroError("iPod is full")
+
+    manager = jobs.JobManager(root=tmp_path / "jobs", fetch=fake_fetch(), match=lambda track: track, copy=full)
+    job = manager.start(TRACKS[:1], "m4a", "Mix", destination=ipod_device(tmp_path))
+    status = wait_job(manager, job.id)
+    assert (status["status"], status["done"], status["failed"]) == ("failed", 0, 1)
+    assert status["results"] == [{"title": "Song 0", "artist": "Artist", "error": "iPod is full"}]
+
+
+def test_download_jobs_say_downloads(tmp_path, fake_fetch, wait_job):
+    manager = manager_for(tmp_path, fake_fetch())
+    job = manager.start(TRACKS[:1], "m4a", "Mix")
+    assert wait_job(manager, job.id)["destination_name"] == "Downloads"

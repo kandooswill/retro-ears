@@ -34,6 +34,7 @@ _name_lock = threading.Lock()
 class Result:
     path: Path
     quality: str
+    art: bytes | None = None
 
 
 class _QuietLogger:
@@ -150,10 +151,11 @@ def fetch(track: Track, fmt: str, workdir: Path) -> Result:
     try:
         info = _download(fmt, tmp, f"https://music.youtube.com/watch?v={track.video_id}")
         source = Path(info["requested_downloads"][0]["filepath"])
-        tags.write_tags(source, track, tags.fetch_art(track.art_url))
+        art = tags.fetch_art(track.art_url)
+        tags.write_tags(source, track, art)
         with _name_lock:
             final = unique_path(workdir, safe_filename(f"{track.artist} - {track.title}"), fmt)
             source.replace(final)
-        return Result(path=final, quality=quality_label(fmt, info.get("acodec"), info.get("abr")))
+        return Result(path=final, quality=quality_label(fmt, info.get("acodec"), info.get("abr")), art=art)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

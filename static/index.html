@@ -77,6 +77,8 @@
   .link-btn:hover { color: var(--text); }
   .link-btn:disabled { cursor: default; text-decoration: none; }
   footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+  .toolbar-right { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+  .hint { margin: -4px 0 12px; color: var(--muted); font-size: 13px; }
   @media (max-width: 560px) {
     .wrap { padding-top: 28px; }
     .row { grid-template-columns: 40px minmax(0, 1fr) auto; }
@@ -108,14 +110,22 @@
       <button class="tab" role="tab" type="button" data-tab="songs" aria-selected="true">Songs</button>
       <button class="tab" role="tab" type="button" data-tab="playlists" aria-selected="false">Playlists</button>
     </div>
-    <label class="format">Format
-      <select id="format">
-        <option value="m4a">AAC (.m4a) · iPod</option>
-        <option value="opus">Opus · Rockbox</option>
-        <option value="mp3">MP3 320</option>
-      </select>
-    </label>
+    <div class="toolbar-right">
+      <label class="format">Format
+        <select id="format">
+          <option value="m4a">AAC (.m4a) · iPod</option>
+          <option value="opus">Opus · Rockbox</option>
+          <option value="mp3">MP3 320</option>
+        </select>
+      </label>
+      <label class="format">Save to
+        <select id="destination">
+          <option value="download">Downloads</option>
+        </select>
+      </label>
+    </div>
   </div>
+  <p class="hint" id="ipodHint">Rockbox iPod not found. Stock iPod? Download, then drag into Music or iTunes and sync.</p>
 
   <main id="results" aria-live="polite">
     <p class="state">Search for a song or playlist, or paste a YouTube, Spotify or Apple Music link.</p>
@@ -307,7 +317,7 @@
     if (results) {
       els.dockList.replaceChildren(...results.map((result) => h("li", {},
         `${result.artist} — ${result.title}: `,
-        result.error ? h("span", { class: "bad" }, result.error) : result.quality)));
+        result.error ? h("span", { class: "bad" }, result.error) : [result.quality, result.saved].filter(Boolean).join(" · "))));
     }
   }
 
@@ -321,7 +331,7 @@
     state.jobId = "starting";
     setDock({ title: tracks.length === 1 ? `Starting ${tracks[0].title}…` : `Starting ${name}…`, progress: 0 });
     try {
-      const { id } = await api("/api/jobs", { method: "POST", body: JSON.stringify({ tracks, format: els.format.value, name }) });
+      const { id } = await api("/api/jobs", { method: "POST", body: JSON.stringify({ tracks, format: els.format.value, name, destination: destEls.select.value }) });
       state.jobId = id;
       pollJob(id);
     } catch (error) {
@@ -365,15 +375,23 @@
       return;
     }
     state.jobId = null;
-    if (job.status === "done") saveFile(id);
+    const toIpod = job.destination_name !== "Downloads";
+    if (job.status === "done" && !toIpod) saveFile(id);
     const first = job.results[0] || {};
+    let sub;
+    if (toIpod) {
+      const songs = `${job.done} song${job.done === 1 ? "" : "s"}`;
+      sub = `Copied ${songs} to ${job.destination_name}${job.failed ? ` · ${job.failed} failed` : ""} — eject the iPod before unplugging`;
+    } else if (single) {
+      sub = job.done ? `Downloaded · ${first.quality}` : `Failed · ${first.error || "Cancelled"}`;
+    } else {
+      sub = `${job.done} done · ${job.failed} failed${job.cancelled ? " · cancelled" : ""}`;
+    }
     setDock({
       title: job.name,
-      sub: single
-        ? (job.done ? `Downloaded · ${first.quality}` : `Failed · ${first.error || "Cancelled"}`)
-        : `${job.done} done · ${job.failed} failed${job.cancelled ? " · cancelled" : ""}`,
+      sub,
       error: job.status === "failed",
-      results: single ? null : job.results,
+      results: single && !toIpod ? null : job.results,
       action: job.failed > 0 && canUpdate ? { label: "Update yt-dlp", run: updateYtdlp } : closeAction,
     });
   }
@@ -383,6 +401,22 @@
     document.body.append(link);
     link.click();
     link.remove();
+  }
+
+  /* ---------- Rockbox iPods ---------- */
+
+  const destEls = { select: $("#destination"), hint: $("#ipodHint") };
+
+  async function refreshDevices() {
+    if (document.hidden) return;
+    let found = [];
+    try { found = await api("/api/devices"); } catch { /* keep Downloads only */ }
+    const current = destEls.select.value;
+    destEls.select.replaceChildren(
+      h("option", { value: "download" }, "Downloads"),
+      ...found.map((device) => h("option", { value: device.id }, `${device.name} (Rockbox)`)));
+    destEls.select.value = found.some((device) => device.id === current) ? current : "download";
+    destEls.hint.hidden = found.length > 0;
   }
 
   /* ---------- version & updates ---------- */
@@ -462,6 +496,9 @@
 
   updateEls.updateBtn.addEventListener("click", updateYtdlp);
   loadVersion();
+  refreshDevices();
+  setInterval(refreshDevices, 5000);
+  document.addEventListener("visibilitychange", refreshDevices);
 </script>
 </body>
 </html>
