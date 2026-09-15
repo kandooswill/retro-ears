@@ -267,7 +267,9 @@
             onclick: () => startJob(tracks, playlist.name),
           }, "Download all"))),
       tracks.length
-        ? h("ul", { class: "list" }, tracks.map(songRow))
+        ? h("ul", { class: "list" }, tracks.map((track) =>
+          // Album links: songs have no art until matched, so show the album cover.
+          songRow(track.art_url || track.album !== playlist.name ? track : { ...track, art_url: playlist.art_url })))
         : h("p", { class: "state" }, "This playlist has no downloadable songs."));
   }
 

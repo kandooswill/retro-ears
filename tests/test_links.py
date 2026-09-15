@@ -164,6 +164,7 @@ def test_resolve_dispatch(monkeypatch):
     monkeypatch.setattr(links, "fetch_page", lambda url: fetched.append(url) or "html")
     monkeypatch.setattr(links, "parse_spotify", lambda html: playlist)
     monkeypatch.setattr(links, "parse_apple", lambda html: playlist)
+    monkeypatch.setattr(links, "spotify_cover", lambda url: None)
 
     assert links.resolve("neon", "songs") == {"type": "songs", "songs": [song]}
     assert links.resolve("neon", "playlists") == {"type": "playlists", "playlists": [playlist]}
@@ -172,3 +173,34 @@ def test_resolve_dispatch(monkeypatch):
     assert links.resolve(SPOTIFY_URL, "songs") == {"type": "playlist", "playlist": playlist}
     assert links.resolve(APPLE_URL, "songs") == {"type": "playlist", "playlist": playlist}
     assert fetched == ["https://open.spotify.com/embed/playlist/1a2B3c4D5e6F7g8H9i0JkL", APPLE_URL]
+
+
+def test_spotify_cover_reads_oembed(monkeypatch):
+    seen = {}
+
+    def fake_get(url, params=None, **kwargs):
+        seen.update(url=url, params=params)
+        return httpx.Response(200, json={"thumbnail_url": "https://image-cdn-ak.spotifycdn.com/image/abc"}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(links.httpx, "get", fake_get)
+    album = "https://open.spotify.com/album/5G34ftqKz03s5y2No2eRu3"
+    assert links.spotify_cover(album) == "https://image-cdn-ak.spotifycdn.com/image/abc"
+    assert seen == {"url": "https://open.spotify.com/oembed", "params": {"url": album}}
+
+
+def test_spotify_cover_failures_give_none(monkeypatch):
+    def offline(*args, **kwargs):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(links.httpx, "get", offline)
+    assert links.spotify_cover("https://open.spotify.com/album/x") is None
+    monkeypatch.setattr(links.httpx, "get", lambda url, **kwargs: httpx.Response(404, request=httpx.Request("GET", url)))
+    assert links.spotify_cover("https://open.spotify.com/album/x") is None
+
+
+def test_resolve_fills_a_missing_spotify_cover(monkeypatch):
+    monkeypatch.setattr(links, "fetch_page", lambda url: "html")
+    monkeypatch.setattr(links, "parse_spotify", lambda html: PlaylistInfo(id=None, name="Groovy"))
+    monkeypatch.setattr(links, "spotify_cover", lambda url: "https://image-cdn-ak.spotifycdn.com/image/abc")
+    playlist = links.resolve("https://open.spotify.com/album/5G34ftqKz03s5y2No2eRu3", "songs")["playlist"]
+    assert playlist.art_url == "https://image-cdn-ak.spotifycdn.com/image/abc"

@@ -54,6 +54,7 @@ def test_match_live():
 def test_spotify_album_live():
     playlist = links.resolve(SPOTIFY_ALBUM, "songs")["playlist"]
     assert playlist.tracks and all(track.artist == "Kevin MacLeod" for track in playlist.tracks)
+    assert playlist.art_url
 
 
 def test_apple_album_live():
