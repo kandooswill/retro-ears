@@ -85,7 +85,7 @@ Both launchers do the same steps:
 
 The app prints "retro-ears is running at http://127.0.0.1:8787 — keep this window open; close it to stop."
 
-**Second launch:** if port 8787 is already taken and `GET http://127.0.0.1:8787/api/version` answers, the new process opens the browser to the running copy and exits with code 0. If the port is taken by something else, it prints "Port 8787 is in use by another program" and exits with code 1.
+**Second launch:** if port 8787 is already taken and `GET http://127.0.0.1:8787/api/version` answers, the new process prints "retro-ears is already running", opens the browser to the running copy and exits with code 0. If the port is taken by something else, it prints "Port 8787 is in use by another program" and exits with code 1.
 
 Deleting the `retro-ears` folder removes the app, its Python and all packages.
 
@@ -180,7 +180,7 @@ Deleting the `retro-ears` folder removes the app, its Python and all packages.
 - **Screenshots** in `docs/images/`, taken while searching Kevin MacLeod. Attribution: "Music shown: Kevin MacLeod (incompetech.com), CC BY 4.0."
 - **No real song examples** in the README beyond the CC-licensed screenshots.
 - **Replace major-label references:**
-  - `tests/test_live.py`: download `5viHgHli590` ("Kool Kats", Kevin MacLeod); search for "kevin macleod"; match "Kool Kats" / "Kevin MacLeod"; Spotify and Apple link tests use a Kevin MacLeod album link.
+  - `tests/test_live.py`: download `5viHgHli590` ("Kool Kats", Kevin MacLeod); search for "kevin macleod"; match "Kool Kats" / "Kevin MacLeod"; Spotify and Apple link tests use a Kevin MacLeod album link (exact links chosen and pinned in the plan).
   - Both existing spec and plan docs: replace song and artist examples with fictional ones.
 - **`LICENSE`:** full GPL-3.0 text.
 
@@ -205,7 +205,7 @@ Deleting the `retro-ears` folder removes the app, its Python and all packages.
 |---|---|
 | First-run setup has no internet | Launcher: "Setup failed — check your internet connection and try again" |
 | No `uv` found | Launcher: "Download retro-ears from https://github.com/kandooswill/retro-ears/releases" |
-| Launched twice | Browser opens the running copy; second window closes |
+| Launched twice | Browser opens the running copy; the second launcher window says "retro-ears is already running" and can be closed |
 | Port 8787 used by another program | Launcher window: "Port 8787 is in use by another program" |
 | Update while a download is running | "Wait for the current download to finish" |
 | Update fails | "Update failed — check your internet connection"; app keeps running |
