@@ -53,3 +53,18 @@ def test_license_is_gpl3():
     text = (ROOT / "LICENSE").read_text("utf-8")
     assert "GNU GENERAL PUBLIC LICENSE" in text
     assert "Version 3, 29 June 2007" in text
+
+
+def test_mac_launcher_is_executable_in_git():
+    output = subprocess.run(["git", "ls-files", "-s", "Start retro-ears.command"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    assert output.split()[0] == "100755"
+
+
+def test_line_endings_are_pinned():
+    text = (ROOT / ".gitattributes").read_text("utf-8")
+    assert "*.command text eol=lf" in text
+    assert "*.bat text eol=crlf" in text
+
+
+def test_windows_launcher_is_ascii():
+    (ROOT / "Start retro-ears.bat").read_bytes().decode("ascii")

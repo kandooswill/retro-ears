@@ -1,12 +1,14 @@
 """retro-ears: a local page for downloading iPod-ready music."""
 from __future__ import annotations
 
+import socket
 import sys
 import threading
 import webbrowser
 from pathlib import Path
 from typing import Literal
 
+import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -104,14 +106,43 @@ def create_app(manager: jobs.JobManager | None = None) -> FastAPI:
     return app
 
 
+def port_status(host: str = HOST, port: int = PORT, timeout: float = 2.0) -> str:
+    """'free', 'retro-ears' (a copy is already running), or 'other' (another program has the port)."""
+    with socket.socket() as probe:
+        if sys.platform != "win32":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # mirror uvicorn so a quick restart isn't blocked
+        try:
+            probe.bind((host, port))
+            return "free"
+        except OSError:
+            pass
+    try:
+        response = httpx.get(f"http://{host}:{port}/api/version", timeout=timeout)
+        if response.status_code == 200 and "app" in response.json():
+            return "retro-ears"
+    except (httpx.HTTPError, ValueError):
+        pass
+    return "other"
+
+
 def main() -> None:
     import uvicorn
 
-    jobs.clear_root()
     url = f"http://{HOST}:{PORT}"
+    status = port_status()
+    if status == "retro-ears":
+        print("retro-ears is already running")
+        if "--no-browser" not in sys.argv:
+            webbrowser.open(url)
+        sys.exit(0)
+    if status == "other":
+        print(f"Port {PORT} is in use by another program")
+        sys.exit(1)
+
+    jobs.clear_root()
     if "--no-browser" not in sys.argv:
         threading.Timer(1.5, webbrowser.open, args=[url]).start()
-    print(f"retro-ears is running at {url} — press Ctrl+C to stop")
+    print(f"retro-ears is running at {url} — keep this window open; close it to stop.")
     uvicorn.run(create_app(), host=HOST, port=PORT, log_level="warning")
 
 

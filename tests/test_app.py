@@ -1,3 +1,7 @@
+import http.server
+import json
+import socket
+import threading
 import time
 
 import pytest
@@ -139,3 +143,63 @@ def test_index_page(client):
     assert "<title>retro-ears</title>" in response.text
     assert 'id="searchForm"' in response.text
     assert "Premium" not in response.text
+
+
+def free_port():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def test_port_status_free():
+    assert app_module.port_status(port=free_port()) == "free"
+
+
+def test_port_status_other_program():
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        assert app_module.port_status(port=listener.getsockname()[1], timeout=0.5) == "other"
+
+
+def test_port_status_retro_ears_already_running():
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({"app": "1.0.0"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        assert app_module.port_status(port=server.server_address[1]) == "retro-ears"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_main_opens_the_running_copy(monkeypatch, capsys):
+    opened = []
+    monkeypatch.setattr(app_module, "port_status", lambda **kwargs: "retro-ears")
+    monkeypatch.setattr(app_module.webbrowser, "open", opened.append)
+    monkeypatch.setattr(app_module.sys, "argv", ["app.py"])
+    with pytest.raises(SystemExit) as exit_info:
+        app_module.main()
+    assert exit_info.value.code == 0
+    assert "retro-ears is already running" in capsys.readouterr().out
+    assert opened == ["http://127.0.0.1:8787"]
+
+
+def test_main_port_taken_by_another_program(monkeypatch, capsys):
+    monkeypatch.setattr(app_module, "port_status", lambda **kwargs: "other")
+    monkeypatch.setattr(app_module.sys, "argv", ["app.py", "--no-browser"])
+    with pytest.raises(SystemExit) as exit_info:
+        app_module.main()
+    assert exit_info.value.code == 1
+    assert "Port 8787 is in use by another program" in capsys.readouterr().out
