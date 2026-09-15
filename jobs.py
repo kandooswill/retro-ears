@@ -100,6 +100,9 @@ class JobManager:
             raise NotFound("Download not found")
         return job
 
+    def busy(self) -> bool:
+        return any(job.public()["status"] == "running" for job in list(self.jobs.values()))
+
     def cancel(self, job_id: str) -> None:
         job = self.get(job_id)
         with job.lock:

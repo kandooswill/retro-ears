@@ -150,3 +150,20 @@ def test_clear_root_empties_the_folder(tmp_path):
     jobs.clear_root(tmp_path)
     assert tmp_path.exists()
     assert list(tmp_path.iterdir()) == []
+
+
+def test_busy_while_a_job_runs(tmp_path, fake_fetch, wait_job):
+    release = threading.Event()
+    base = fake_fetch()
+
+    def slow_fetch(track, fmt, workdir):
+        release.wait(5)
+        return base(track, fmt, workdir)
+
+    manager = manager_for(tmp_path, slow_fetch)
+    assert manager.busy() is False
+    job = manager.start(TRACKS[:1], "m4a", "Mix")
+    assert manager.busy() is True
+    release.set()
+    wait_job(manager, job.id)
+    assert manager.busy() is False

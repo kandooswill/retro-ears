@@ -3,6 +3,7 @@ import json
 import socket
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,10 +12,25 @@ import app as app_module
 import jobs
 from models import NotFound, NotSupported, Offline, PlaylistInfo, Track
 
+ROOT = Path(__file__).resolve().parent.parent
 
-def build_app(tmp_path, fake_fetch):
-    manager = jobs.JobManager(root=tmp_path / "jobs", fetch=fake_fetch(), match=lambda track: track)
-    return app_module.create_app(manager=manager)
+
+class FakeChecker:
+    def __init__(self, latest=None):
+        self._latest = latest
+
+    def latest(self):
+        return self._latest
+
+
+def build_app(tmp_path, fake_fetch, manager=None, **overrides):
+    manager = manager or jobs.JobManager(root=tmp_path / "jobs", fetch=fake_fetch(), match=lambda track: track)
+    options = {"checker": FakeChecker(), "restart": lambda: None, **overrides}
+    return app_module.create_app(manager=manager, **options)
+
+
+def local_client(application):
+    return TestClient(application, base_url="http://127.0.0.1:8787")
 
 
 @pytest.fixture
@@ -143,6 +159,7 @@ def test_index_page(client):
     assert "<title>retro-ears</title>" in response.text
     assert 'id="searchForm"' in response.text
     assert "Premium" not in response.text
+    assert 'id="updateBtn"' in response.text
 
 
 def free_port():
@@ -203,3 +220,65 @@ def test_main_port_taken_by_another_program(monkeypatch, capsys):
         app_module.main()
     assert exit_info.value.code == 1
     assert "Port 8787 is in use by another program" in capsys.readouterr().out
+
+
+def test_version_route(tmp_path, fake_fetch, monkeypatch):
+    monkeypatch.delenv("RETRO_UV", raising=False)
+    release = {"tag": "v99.0.0", "url": "https://github.com/kandooswill/retro-ears/releases/tag/v99.0.0"}
+    info = local_client(build_app(tmp_path, fake_fetch, checker=FakeChecker(release))).get("/api/version").json()
+    assert info["app"] == (ROOT / "VERSION").read_text("utf-8").strip()
+    assert (info["latest_app"], info["release_url"], info["can_update"]) == ("99.0.0", release["url"], False)
+    assert info["ytdlp"]
+    assert isinstance(info["started"], float)
+
+
+def test_update_needs_the_launcher(client, monkeypatch):
+    monkeypatch.delenv("RETRO_UV", raising=False)
+    response = client.post("/api/update")
+    assert response.status_code == 400
+    assert response.json() == {"error": "Updating only works when retro-ears is started with its launcher"}
+
+
+def test_update_refused_while_downloading(tmp_path, fake_fetch, monkeypatch):
+    uv = tmp_path / "uv"
+    uv.write_text("")
+    monkeypatch.setenv("RETRO_UV", str(uv))
+    release = threading.Event()
+    base = fake_fetch()
+
+    def slow_fetch(track, fmt, workdir):
+        release.wait(5)
+        return base(track, fmt, workdir)
+
+    manager = jobs.JobManager(root=tmp_path / "jobs", fetch=slow_fetch, match=lambda track: track)
+    client = local_client(build_app(tmp_path, fake_fetch, manager=manager))
+    client.post("/api/jobs", json={"tracks": [{"title": "a", "artist": "b", "video_id": "v"}]})
+    response = client.post("/api/update")
+    release.set()
+    assert response.status_code == 409
+    assert response.json() == {"error": "Wait for the current download to finish"}
+
+
+def test_update_success_restarts(tmp_path, fake_fetch, monkeypatch):
+    uv = tmp_path / "uv"
+    uv.write_text("")
+    monkeypatch.setenv("RETRO_UV", str(uv))
+    monkeypatch.setattr(app_module.updates, "update_ytdlp", lambda: True)
+    restarts = []
+    client = local_client(build_app(tmp_path, fake_fetch, restart=lambda: restarts.append(True)))
+    response = client.post("/api/update")
+    assert response.json() == {"ok": True, "restarting": True}
+    assert restarts == [True]
+
+
+def test_update_failure_keeps_running(tmp_path, fake_fetch, monkeypatch):
+    uv = tmp_path / "uv"
+    uv.write_text("")
+    monkeypatch.setenv("RETRO_UV", str(uv))
+    monkeypatch.setattr(app_module.updates, "update_ytdlp", lambda: False)
+    restarts = []
+    client = local_client(build_app(tmp_path, fake_fetch, restart=lambda: restarts.append(True)))
+    response = client.post("/api/update")
+    assert response.status_code == 502
+    assert response.json() == {"error": "Update failed — check your internet connection"}
+    assert restarts == []

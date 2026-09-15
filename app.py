@@ -16,6 +16,7 @@ from starlette.exceptions import HTTPException
 
 import jobs
 import links
+import updates
 import ytmusic
 from models import NotFound, Offline, ParseChanged, RetroError, Track
 
@@ -48,9 +49,11 @@ def _status_for(error: RetroError) -> int:
     return 400
 
 
-def create_app(manager: jobs.JobManager | None = None) -> FastAPI:
+def create_app(manager: jobs.JobManager | None = None, checker=None, restart=None) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     manager = manager or jobs.JobManager()
+    checker = checker or updates.ReleaseChecker()
+    restart = restart or updates.schedule_restart
 
     @app.middleware("http")
     async def only_local_host(request: Request, call_next):
@@ -103,6 +106,21 @@ def create_app(manager: jobs.JobManager | None = None) -> FastAPI:
         manager.cancel(job_id)
         return {"ok": True}
 
+    @app.get("/api/version")
+    def version():
+        return updates.version_info(checker)
+
+    @app.post("/api/update")
+    def update():
+        if manager.busy():
+            raise HTTPException(409, "Wait for the current download to finish")
+        if updates.uv_path() is None:
+            raise HTTPException(400, "Updating only works when retro-ears is started with its launcher")
+        if not updates.update_ytdlp():
+            raise HTTPException(502, "Update failed — check your internet connection")
+        restart()
+        return {"ok": True, "restarting": True}
+
     return app
 
 
@@ -131,18 +149,18 @@ def main() -> None:
     url = f"http://{HOST}:{PORT}"
     status = port_status()
     if status == "retro-ears":
-        print("retro-ears is already running")
+        print("retro-ears is already running", flush=True)
         if "--no-browser" not in sys.argv:
             webbrowser.open(url)
         sys.exit(0)
     if status == "other":
-        print(f"Port {PORT} is in use by another program")
+        print(f"Port {PORT} is in use by another program", flush=True)
         sys.exit(1)
 
     jobs.clear_root()
     if "--no-browser" not in sys.argv:
         threading.Timer(1.5, webbrowser.open, args=[url]).start()
-    print(f"retro-ears is running at {url} — keep this window open; close it to stop.")
+    print(f"retro-ears is running at {url} — keep this window open; close it to stop.", flush=True)
     uvicorn.run(create_app(), host=HOST, port=PORT, log_level="warning")
 
 
