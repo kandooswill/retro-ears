@@ -6,8 +6,8 @@ import pytest
 import links
 from models import NotFound, NotSupported, Offline, ParseChanged, PlaylistInfo, Track
 
-SPOTIFY_URL = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=abc"
-APPLE_URL = "https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd41149aaacabb233eb5eb"
+SPOTIFY_URL = "https://open.spotify.com/playlist/1a2B3c4D5e6F7g8H9i0JkL?si=abc"
+APPLE_URL = "https://music.apple.com/us/playlist/calm-mix/pl.u-0000000000000"
 
 
 @pytest.mark.parametrize(
@@ -15,18 +15,18 @@ APPLE_URL = "https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd4114
     [
         ("neon night", "search", "neon night"),
         ("  glass arcade  ", "search", "glass arcade"),
-        ("https://www.youtube.com/watch?v=J7p4bzqLvCw", "song", "J7p4bzqLvCw"),
-        ("https://youtu.be/J7p4bzqLvCw?si=abc", "song", "J7p4bzqLvCw"),
-        ("https://music.youtube.com/watch?v=J7p4bzqLvCw&feature=share", "song", "J7p4bzqLvCw"),
-        ("https://m.youtube.com/watch?v=J7p4bzqLvCw", "song", "J7p4bzqLvCw"),
-        ("https://www.youtube.com/watch?v=J7p4bzqLvCw&list=RDJ7p4bzqLvCw", "song", "J7p4bzqLvCw"),
+        ("https://www.youtube.com/watch?v=5viHgHli590", "song", "5viHgHli590"),
+        ("https://youtu.be/5viHgHli590?si=abc", "song", "5viHgHli590"),
+        ("https://music.youtube.com/watch?v=5viHgHli590&feature=share", "song", "5viHgHli590"),
+        ("https://m.youtube.com/watch?v=5viHgHli590", "song", "5viHgHli590"),
+        ("https://www.youtube.com/watch?v=5viHgHli590&list=RD5viHgHli590", "song", "5viHgHli590"),
         ("https://www.youtube.com/playlist?list=PLabc123", "youtube_playlist", "PLabc123"),
         ("https://music.youtube.com/playlist?list=RDCLAK5uy_abc", "youtube_playlist", "RDCLAK5uy_abc"),
-        ("https://www.youtube.com/watch?v=J7p4bzqLvCw&list=PLabc123", "youtube_playlist", "PLabc123"),
+        ("https://www.youtube.com/watch?v=5viHgHli590&list=PLabc123", "youtube_playlist", "PLabc123"),
         (SPOTIFY_URL, "spotify", SPOTIFY_URL),
-        ("https://open.spotify.com/intl-de/album/4yP0hdKOZPNshxUOjY0cZj", "spotify", "https://open.spotify.com/intl-de/album/4yP0hdKOZPNshxUOjY0cZj"),
+        ("https://open.spotify.com/intl-de/album/5G34ftqKz03s5y2No2eRu3", "spotify", "https://open.spotify.com/intl-de/album/5G34ftqKz03s5y2No2eRu3"),
         (APPLE_URL, "apple", APPLE_URL),
-        ("https://music.apple.com/us/album/after-hours/1499378108", "apple", "https://music.apple.com/us/album/after-hours/1499378108"),
+        ("https://music.apple.com/us/album/light-electronic/1887659157", "apple", "https://music.apple.com/us/album/light-electronic/1887659157"),
     ],
 )
 def test_classify(text, kind, value):
@@ -37,7 +37,7 @@ def test_classify(text, kind, value):
     "text",
     [
         "https://soundcloud.com/artist/song",
-        "https://open.spotify.com/track/7bxaFZ1O3cHkgLKMsdC3xR",
+        "https://open.spotify.com/track/9zY8xW7vU6tS5rQ4pO3nMl",
         "https://www.youtube.com/@somechannel",
         "https://example.com",
     ],
@@ -48,8 +48,8 @@ def test_classify_rejects_unsupported_links(text):
 
 
 def test_spotify_embed_url():
-    assert links.spotify_embed_url(SPOTIFY_URL) == "https://open.spotify.com/embed/playlist/37i9dQZF1DXcBWIGoYBM5M"
-    assert links.spotify_embed_url("https://open.spotify.com/intl-de/album/4yP0hdKOZPNshxUOjY0cZj") == "https://open.spotify.com/embed/album/4yP0hdKOZPNshxUOjY0cZj"
+    assert links.spotify_embed_url(SPOTIFY_URL) == "https://open.spotify.com/embed/playlist/1a2B3c4D5e6F7g8H9i0JkL"
+    assert links.spotify_embed_url("https://open.spotify.com/intl-de/album/5G34ftqKz03s5y2No2eRu3") == "https://open.spotify.com/embed/album/5G34ftqKz03s5y2No2eRu3"
 
 
 def spotify_html(entity):
@@ -167,8 +167,8 @@ def test_resolve_dispatch(monkeypatch):
 
     assert links.resolve("neon", "songs") == {"type": "songs", "songs": [song]}
     assert links.resolve("neon", "playlists") == {"type": "playlists", "playlists": [playlist]}
-    assert links.resolve("https://youtu.be/J7p4bzqLvCw", "playlists") == {"type": "songs", "songs": [song]}
+    assert links.resolve("https://youtu.be/5viHgHli590", "playlists") == {"type": "songs", "songs": [song]}
     assert links.resolve("https://www.youtube.com/playlist?list=PLx", "songs") == {"type": "playlist", "playlist": playlist}
     assert links.resolve(SPOTIFY_URL, "songs") == {"type": "playlist", "playlist": playlist}
     assert links.resolve(APPLE_URL, "songs") == {"type": "playlist", "playlist": playlist}
-    assert fetched == ["https://open.spotify.com/embed/playlist/37i9dQZF1DXcBWIGoYBM5M", APPLE_URL]
+    assert fetched == ["https://open.spotify.com/embed/playlist/1a2B3c4D5e6F7g8H9i0JkL", APPLE_URL]
