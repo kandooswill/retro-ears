@@ -26,7 +26,7 @@ if exist ".runtime\installed-version" set /p INSTALLED=<".runtime\installed-vers
 if "%INSTALLED%"=="%VERSION%" goto run
 
 echo Setting up retro-ears - the first run takes 1-2 minutes...
-"%UV%" sync --frozen --no-dev
+call "%UV%" sync --frozen --no-dev
 if errorlevel 1 (
   echo Setup failed - check your internet connection and try again
   call :wait_for_key
@@ -36,7 +36,7 @@ if not exist ".runtime" mkdir ".runtime"
 >".runtime\installed-version" <nul set /p "=%VERSION%"
 
 :run
-"%UV%" run --no-sync python app.py %*
+call "%UV%" run --no-sync python app.py %*
 set "CODE=%ERRORLEVEL%"
 if "%CODE%"=="42" (
   echo Restarting...
