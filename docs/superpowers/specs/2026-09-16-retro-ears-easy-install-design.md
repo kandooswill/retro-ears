@@ -106,6 +106,7 @@ Deleting the `retro-ears` folder removes the app, its Python and all packages.
 
 - `app` from `VERSION`; `ytdlp` from `yt_dlp.version.__version__`.
 - `can_update` is true when `RETRO_UV` points to an existing file.
+- `started` is the server's start time; after an update the page waits for it to change before reloading.
 - `latest_app` / `release_url` come from `https://api.github.com/repos/kandooswill/retro-ears/releases/latest` (httpx + certifi, 5 s timeout), cached for 6 hours. Any failure gives `null` for both. `latest_app` is only returned when it is newer than `app` (compare `X.Y.Z` numerically; tags are `vX.Y.Z`).
 
 ### 5.2 Update yt-dlp
