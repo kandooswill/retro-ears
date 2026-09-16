@@ -865,12 +865,12 @@ pytestmark = pytest.mark.live
 
 COOKIES = os.environ.get("RETRO_COOKIES", "off")
 SONG = Track(
-    title="Blinding Lights",
-    artist="The Weeknd",
-    album="Blinding Lights",
+    title="Kool Kats",
+    artist="Kevin MacLeod",
+    album="Kool Kats",
     duration_s=202,
-    art_url="https://i.ytimg.com/vi/J7p4bzqLvCw/hqdefault.jpg",
-    video_id="J7p4bzqLvCw",
+    art_url="https://i.ytimg.com/vi/5viHgHli590/hqdefault.jpg",
+    video_id="5viHgHli590",
 )
 LABEL_PREFIX = {"m4a": "AAC", "opus": "Opus", "mp3": "MP3 320"}
 
@@ -883,8 +883,8 @@ def test_download_real_song(tmp_path, fmt):
     assert result.path.stat().st_size > 1_000_000
     assert result.quality.startswith(LABEL_PREFIX[fmt])
     audio = mutagen.File(result.path, easy=True)
-    assert audio["title"] == ["Blinding Lights"]
-    assert audio["artist"] == ["The Weeknd"]
+    assert audio["title"] == ["Kool Kats"]
+    assert audio["artist"] == ["Kevin MacLeod"]
 ```
 
 - [ ] **Step 6: Run the live test without Premium**
@@ -1447,7 +1447,7 @@ import ytmusic
 
 
 def test_search_songs_live():
-    songs = ytmusic.search_songs("the weeknd blinding lights", limit=5)
+    songs = ytmusic.search_songs("kevin macleod kool kats", limit=5)
     assert songs and all(song.video_id for song in songs)
 
 
@@ -1459,7 +1459,7 @@ def test_search_and_open_playlist_live():
 
 
 def test_match_live():
-    matched = ytmusic.match(Track(title="Blinding Lights", artist="The Weeknd", duration_s=200))
+    matched = ytmusic.match(Track(title="Kool Kats", artist="Kevin MacLeod", duration_s=200))
     assert matched.video_id
 ```
 
@@ -1507,8 +1507,8 @@ import pytest
 import links
 from models import NotFound, NotSupported, Offline, ParseChanged, PlaylistInfo, Track
 
-SPOTIFY_URL = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=abc"
-APPLE_URL = "https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd41149aaacabb233eb5eb"
+SPOTIFY_URL = "https://open.spotify.com/playlist/1a2B3c4D5e6F7g8H9i0JkL?si=abc"
+APPLE_URL = "https://music.apple.com/us/playlist/calm-mix/pl.u-0000000000000"
 
 
 @pytest.mark.parametrize(
@@ -1516,18 +1516,18 @@ APPLE_URL = "https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd4114
     [
         ("neon night", "search", "neon night"),
         ("  glass arcade  ", "search", "glass arcade"),
-        ("https://www.youtube.com/watch?v=J7p4bzqLvCw", "song", "J7p4bzqLvCw"),
-        ("https://youtu.be/J7p4bzqLvCw?si=abc", "song", "J7p4bzqLvCw"),
-        ("https://music.youtube.com/watch?v=J7p4bzqLvCw&feature=share", "song", "J7p4bzqLvCw"),
-        ("https://m.youtube.com/watch?v=J7p4bzqLvCw", "song", "J7p4bzqLvCw"),
-        ("https://www.youtube.com/watch?v=J7p4bzqLvCw&list=RDJ7p4bzqLvCw", "song", "J7p4bzqLvCw"),
+        ("https://www.youtube.com/watch?v=5viHgHli590", "song", "5viHgHli590"),
+        ("https://youtu.be/5viHgHli590?si=abc", "song", "5viHgHli590"),
+        ("https://music.youtube.com/watch?v=5viHgHli590&feature=share", "song", "5viHgHli590"),
+        ("https://m.youtube.com/watch?v=5viHgHli590", "song", "5viHgHli590"),
+        ("https://www.youtube.com/watch?v=5viHgHli590&list=RD5viHgHli590", "song", "5viHgHli590"),
         ("https://www.youtube.com/playlist?list=PLabc123", "youtube_playlist", "PLabc123"),
         ("https://music.youtube.com/playlist?list=RDCLAK5uy_abc", "youtube_playlist", "RDCLAK5uy_abc"),
-        ("https://www.youtube.com/watch?v=J7p4bzqLvCw&list=PLabc123", "youtube_playlist", "PLabc123"),
+        ("https://www.youtube.com/watch?v=5viHgHli590&list=PLabc123", "youtube_playlist", "PLabc123"),
         (SPOTIFY_URL, "spotify", SPOTIFY_URL),
-        ("https://open.spotify.com/intl-de/album/4yP0hdKOZPNshxUOjY0cZj", "spotify", "https://open.spotify.com/intl-de/album/4yP0hdKOZPNshxUOjY0cZj"),
+        ("https://open.spotify.com/intl-de/album/5G34ftqKz03s5y2No2eRu3", "spotify", "https://open.spotify.com/intl-de/album/5G34ftqKz03s5y2No2eRu3"),
         (APPLE_URL, "apple", APPLE_URL),
-        ("https://music.apple.com/us/album/after-hours/1499378108", "apple", "https://music.apple.com/us/album/after-hours/1499378108"),
+        ("https://music.apple.com/us/album/light-electronic/1887659157", "apple", "https://music.apple.com/us/album/light-electronic/1887659157"),
     ],
 )
 def test_classify(text, kind, value):
@@ -1538,7 +1538,7 @@ def test_classify(text, kind, value):
     "text",
     [
         "https://soundcloud.com/artist/song",
-        "https://open.spotify.com/track/7bxaFZ1O3cHkgLKMsdC3xR",
+        "https://open.spotify.com/track/9zY8xW7vU6tS5rQ4pO3nMl",
         "https://www.youtube.com/@somechannel",
         "https://example.com",
     ],
@@ -1549,8 +1549,8 @@ def test_classify_rejects_unsupported_links(text):
 
 
 def test_spotify_embed_url():
-    assert links.spotify_embed_url(SPOTIFY_URL) == "https://open.spotify.com/embed/playlist/37i9dQZF1DXcBWIGoYBM5M"
-    assert links.spotify_embed_url("https://open.spotify.com/intl-de/album/4yP0hdKOZPNshxUOjY0cZj") == "https://open.spotify.com/embed/album/4yP0hdKOZPNshxUOjY0cZj"
+    assert links.spotify_embed_url(SPOTIFY_URL) == "https://open.spotify.com/embed/playlist/1a2B3c4D5e6F7g8H9i0JkL"
+    assert links.spotify_embed_url("https://open.spotify.com/intl-de/album/5G34ftqKz03s5y2No2eRu3") == "https://open.spotify.com/embed/album/5G34ftqKz03s5y2No2eRu3"
 
 
 def spotify_html(entity):
@@ -1668,11 +1668,11 @@ def test_resolve_dispatch(monkeypatch):
 
     assert links.resolve("neon", "songs") == {"type": "songs", "songs": [song]}
     assert links.resolve("neon", "playlists") == {"type": "playlists", "playlists": [playlist]}
-    assert links.resolve("https://youtu.be/J7p4bzqLvCw", "playlists") == {"type": "songs", "songs": [song]}
+    assert links.resolve("https://youtu.be/5viHgHli590", "playlists") == {"type": "songs", "songs": [song]}
     assert links.resolve("https://www.youtube.com/playlist?list=PLx", "songs") == {"type": "playlist", "playlist": playlist}
     assert links.resolve(SPOTIFY_URL, "songs") == {"type": "playlist", "playlist": playlist}
     assert links.resolve(APPLE_URL, "songs") == {"type": "playlist", "playlist": playlist}
-    assert fetched == ["https://open.spotify.com/embed/playlist/37i9dQZF1DXcBWIGoYBM5M", APPLE_URL]
+    assert fetched == ["https://open.spotify.com/embed/playlist/1a2B3c4D5e6F7g8H9i0JkL", APPLE_URL]
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1838,13 +1838,13 @@ import links
 
 
 def test_spotify_playlist_live():
-    result = links.resolve("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M", "songs")
+    result = links.resolve("https://open.spotify.com/playlist/1a2B3c4D5e6F7g8H9i0JkL", "songs")
     playlist = result["playlist"]
     assert playlist.tracks and all(track.title and track.artist for track in playlist.tracks)
 
 
 def test_apple_playlist_live():
-    result = links.resolve("https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd41149aaacabb233eb5eb", "songs")
+    result = links.resolve("https://music.apple.com/us/playlist/calm-mix/pl.u-0000000000000", "songs")
     playlist = result["playlist"]
     assert playlist.tracks and all(track.artist != "Unknown Artist" for track in playlist.tracks)
 ```
@@ -3113,11 +3113,11 @@ Expected: 17 passed
 - [ ] **Step 5: Manual check in a real browser**
 
 Start: `.venv/bin/python app.py --no-browser` (background), then open `http://127.0.0.1:8787` and check each item:
-1. Songs tab: search `blinding lights` → rows show art, title, artist · album, duration.
-2. Click ↓ on one row with Format M4A → dock shows progress, then the browser saves `The Weeknd - Blinding Lights.m4a` and the dock shows `Downloaded · AAC 130` (or `AAC 256` with Premium).
+1. Songs tab: search `kool kats` → rows show art, title, artist · album, duration.
+2. Click ↓ on one row with Format M4A → dock shows progress, then the browser saves `Kevin MacLeod - Kool Kats.m4a` and the dock shows `Downloaded · AAC 130` (or `AAC 256` with Premium).
 3. Playlists tab: search `80s hits` → rows with song counts; **View** opens the track list with **← Back**; **Back** returns to the list.
 4. Download a small playlist (or a pasted YouTube playlist link with ≤ 5 songs) → `n / total` progress, **Cancel** works, a ZIP is saved, dock shows `x done · y failed` with **Details**.
-5. Paste `https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M` → playlist view; paste an Apple Music playlist link → playlist view.
+5. Paste `https://open.spotify.com/playlist/1a2B3c4D5e6F7g8H9i0JkL` → playlist view; paste an Apple Music playlist link → playlist view.
 6. Paste `https://soundcloud.com/a/b` → red message "Link not supported — …".
 7. Premium dialog: pick Firefox → button reads `Premium: Firefox`; pick cookies.txt with a wrong path → red "cookies.txt file not found".
 8. Narrow the window to ~400 px → rows stay readable, durations hide.

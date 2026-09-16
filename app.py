@@ -1,19 +1,23 @@
 """retro-ears: a local page for downloading iPod-ready music."""
 from __future__ import annotations
 
+import socket
 import sys
 import threading
 import webbrowser
 from pathlib import Path
 from typing import Literal
 
+import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
 
+import devices
 import jobs
 import links
+import updates
 import ytmusic
 from models import NotFound, Offline, ParseChanged, RetroError, Track
 
@@ -36,6 +40,7 @@ class JobIn(BaseModel):
     tracks: list[TrackIn] = Field(min_length=1, max_length=1000)
     format: Literal["m4a", "opus", "mp3"] = "m4a"
     name: str = Field(default="retro-ears", max_length=200)
+    destination: str = Field(default="download", max_length=500)
 
 
 def _status_for(error: RetroError) -> int:
@@ -46,9 +51,12 @@ def _status_for(error: RetroError) -> int:
     return 400
 
 
-def create_app(manager: jobs.JobManager | None = None) -> FastAPI:
+def create_app(manager: jobs.JobManager | None = None, checker=None, restart=None, find_devices=None) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     manager = manager or jobs.JobManager()
+    checker = checker or updates.ReleaseChecker()
+    restart = restart or updates.schedule_restart
+    find_devices = find_devices or devices.find_rockbox
 
     @app.middleware("http")
     async def only_local_host(request: Request, call_next):
@@ -81,8 +89,14 @@ def create_app(manager: jobs.JobManager | None = None) -> FastAPI:
 
     @app.post("/api/jobs")
     def start_job(body: JobIn):
+        destination = None
+        if body.destination != "download":
+            # Only a Rockbox iPod we can see right now, never an arbitrary path from the request.
+            destination = next((device for device in find_devices() if device.id == body.destination), None)
+            if destination is None:
+                raise HTTPException(400, "iPod not found — plug it in and try again")
         try:
-            job = manager.start([Track(**track.model_dump()) for track in body.tracks], body.format, body.name)
+            job = manager.start([Track(**track.model_dump()) for track in body.tracks], body.format, body.name, destination=destination)
         except ValueError as error:
             raise HTTPException(400, str(error)) from error
         return {"id": job.id}
@@ -101,17 +115,65 @@ def create_app(manager: jobs.JobManager | None = None) -> FastAPI:
         manager.cancel(job_id)
         return {"ok": True}
 
+    @app.get("/api/version")
+    def version():
+        return updates.version_info(checker)
+
+    @app.post("/api/update")
+    def update():
+        if manager.busy():
+            raise HTTPException(409, "Wait for the current download to finish")
+        if updates.uv_path() is None:
+            raise HTTPException(400, "Updating only works when retro-ears is started with its launcher")
+        if not updates.update_ytdlp():
+            raise HTTPException(502, "Update failed — check your internet connection")
+        restart()
+        return {"ok": True, "restarting": True}
+
+    @app.get("/api/devices")
+    def list_devices():
+        return [device.public() for device in find_devices()]
+
     return app
+
+
+def port_status(host: str = HOST, port: int = PORT, timeout: float = 2.0) -> str:
+    """'free', 'retro-ears' (a copy is already running), or 'other' (another program has the port)."""
+    with socket.socket() as probe:
+        if sys.platform != "win32":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # mirror uvicorn so a quick restart isn't blocked
+        try:
+            probe.bind((host, port))
+            return "free"
+        except OSError:
+            pass
+    try:
+        response = httpx.get(f"http://{host}:{port}/api/version", timeout=timeout)
+        if response.status_code == 200 and "app" in response.json():
+            return "retro-ears"
+    except (httpx.HTTPError, ValueError):
+        pass
+    return "other"
 
 
 def main() -> None:
     import uvicorn
 
-    jobs.clear_root()
     url = f"http://{HOST}:{PORT}"
+    status = port_status()
+    if status == "retro-ears":
+        print("retro-ears is already running", flush=True)
+        if "--no-browser" not in sys.argv:
+            webbrowser.open(url)
+        sys.exit(0)
+    if status == "other":
+        print(f"Port {PORT} is in use by another program", flush=True)
+        sys.exit(1)
+
+    jobs.clear_root()
     if "--no-browser" not in sys.argv:
         threading.Timer(1.5, webbrowser.open, args=[url]).start()
-    print(f"retro-ears is running at {url} — press Ctrl+C to stop")
+    print(f"retro-ears is running at {url} — keep this window open; close it to stop.", flush=True)
     uvicorn.run(create_app(), host=HOST, port=PORT, log_level="warning")
 
 

@@ -61,6 +61,21 @@ def fetch_page(url: str) -> str:
     return response.text
 
 
+def spotify_cover(url: str) -> str | None:
+    """Album embeds carry no cover image, so ask Spotify's public oEmbed endpoint instead."""
+    try:
+        response = httpx.get(
+            "https://open.spotify.com/oembed",
+            params={"url": url},
+            headers={"User-Agent": USER_AGENT},
+            timeout=10,
+            verify=certifi.where(),
+        )
+        return response.json().get("thumbnail_url") if response.status_code == 200 else None
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
 def spotify_embed_url(url: str) -> str:
     found = re.search(r"/(playlist|album)/([A-Za-z0-9]+)", urlparse(url).path)
     return f"https://open.spotify.com/embed/{found.group(1)}/{found.group(2)}"
@@ -137,5 +152,8 @@ def resolve(text: str, tab: str) -> dict:
     if route.kind == "youtube_playlist":
         return {"type": "playlist", "playlist": ytmusic.get_playlist(route.value)}
     if route.kind == "spotify":
-        return {"type": "playlist", "playlist": parse_spotify(fetch_page(spotify_embed_url(route.value)))}
+        playlist = parse_spotify(fetch_page(spotify_embed_url(route.value)))
+        if not playlist.art_url:
+            playlist.art_url = spotify_cover(route.value)
+        return {"type": "playlist", "playlist": playlist}
     return {"type": "playlist", "playlist": parse_apple(fetch_page(route.value))}

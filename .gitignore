@@ -5,3 +5,5 @@ __pycache__/
 cookies*.txt
 *.cookies.txt
 .gstack/
+.runtime/
+dist/

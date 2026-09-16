@@ -122,6 +122,7 @@ def test_fetch_tags_renames_and_labels(tmp_path, monkeypatch, silent_file, jpeg_
 
     assert result.path == workdir / "Artist - Song.m4a"
     assert result.quality == "AAC 130"
+    assert result.art[:2] == b"\xff\xd8"  # the cover art is returned for iPod copies
     assert calls[0][1] == "https://music.youtube.com/watch?v=abc123def45"
     audio = MP4(result.path)
     assert audio["\xa9nam"] == ["Song"]

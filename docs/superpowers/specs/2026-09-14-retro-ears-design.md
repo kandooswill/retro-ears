@@ -53,14 +53,14 @@ retro-ears
 └──────────────────────────────────────────────────┘ └────────┘
  (● Songs) ( Playlists )                      Format: [ AAC ▾ ]
 
- ▣ Blinding Lights — The Weeknd · Blinding Lights    3:22  [↓]
- ▣ Starboy — The Weeknd · Starboy                    3:51  [↓]
+ ▣ Kool Kats — Kevin MacLeod · Kool Kats    3:22  [↓]
+ ▣ The Descent — Kevin MacLeod · The Descent                    3:51  [↓]
 
  Playlists tab:
  ▣ '80s Summer Grooves · 100 songs          [View] [↓ All]
 
  ───────────────────────────────────────────────────────────────
- Downloading 23 / 100 · Beat It — Michael Jackson      [Cancel]
+ Downloading 23 / 100 · Carefree — Kevin MacLeod      [Cancel]
 ```
 
 - **Search box:** plain text searches the active tab. A pasted link is recognized automatically (section 5.3).
